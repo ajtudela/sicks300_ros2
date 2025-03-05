@@ -47,7 +47,7 @@ public:
       "scan", rclcpp::SensorDataQoS(),
       std::bind(&ScanFilter::scan_callback, this, std::placeholders::_1));
     laser_scan_filtered_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(
-      "scan_filtered", rclcpp::SensorDataQoS());
+      "scan_filtered", rclcpp::SystemDefaultsQoS());
   }
 
 private:
