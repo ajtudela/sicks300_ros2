@@ -8,19 +8,20 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4.1.6
+        uses: actions/checkout@v7
       - name: Setup ROS 2
-        uses: ros-tooling/setup-ros@0.7.5
+        uses: ros-tooling/setup-ros@0.7.19
         with:
           required-ros-distributions: jazzy
       - name: Install dependencies
-        uses: ros-tooling/action-ros-ci@0.3.13
+        uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: sicks300_ros2
           target-ros2-distro: jazzy
