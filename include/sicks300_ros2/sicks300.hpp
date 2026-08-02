@@ -138,13 +138,13 @@ protected:
   /**
    * @brief Publish the laser scan
    *
-   * @param vdDistM Vector of distances in meters
-   * @param vdAngRAD Vector of angles in radians
-   * @param vdIntensAU Vector of intensities in arbitrary units
+   * @param ranges_m Vector of distances in meters
+   * @param angles_rad Vector of angles in radians
+   * @param intensities_au Vector of intensities in arbitrary units
    */
   void publishLaserScan(
-    const std::vector<double> & vdDistM, const std::vector<double> & vdAngRAD,
-    const std::vector<double> & vdIntensAU);
+    const std::vector<double> & ranges_m, const std::vector<double> & angles_rad,
+    const std::vector<double> & intensities_au);
 
   /**
    * @brief Fill out the scanner's DiagnosticStatus for diagnostic_updater

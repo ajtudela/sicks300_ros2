@@ -196,8 +196,8 @@ CallbackReturn SickS300::on_configure(const rclcpp_lifecycle::State &)
   diagnostic_updater_->add("Sick S300 scanner", this, &SickS300::produceDiagnostics);
 
   // Open the laser scanner
-  bool bOpenScan = this->open();
-  if (!bOpenScan) {
+  bool scanner_opened = this->open();
+  if (!scanner_opened) {
     RCLCPP_ERROR(
       this->get_logger(),
       "...scanner not available on port %s. Please, try again.", port_.c_str());
@@ -345,67 +345,67 @@ void SickS300::publishStandby(bool in_standby)
 }
 
 void SickS300::publishLaserScan(
-  const std::vector<double> & vdDistM, const std::vector<double> & vdAngRAD,
-  const std::vector<double> & vdIntensAU)
+  const std::vector<double> & ranges_m, const std::vector<double> & angles_rad,
+  const std::vector<double> & intensities_au)
 {
-  if (vdDistM.size() < 2) {
+  if (ranges_m.size() < 2) {
     RCLCPP_WARN(
       this->get_logger(),
-      "Discarding a scan with less than 2 points (got %zu)", vdDistM.size());
+      "Discarding a scan with less than 2 points (got %zu)", ranges_m.size());
     return;
   }
 
-  const int num_points = static_cast<int>(vdDistM.size());
+  const int num_points = static_cast<int>(ranges_m.size());
 
   // Create LaserScan message
-  sensor_msgs::msg::LaserScan laserScan;
-  laserScan.header.stamp = this->now();
+  sensor_msgs::msg::LaserScan laser_scan;
+  laser_scan.header.stamp = this->now();
 
   // Fill message
-  laserScan.header.frame_id = frame_id_;
-  laserScan.range_min = kRangeMin;
-  laserScan.range_max = kRangeMax;
-  laserScan.time_increment = scan_duration_ / num_points;
-  laserScan.scan_time = scan_cycle_time_;
-  laserScan.ranges.resize(num_points);
-  laserScan.intensities.resize(num_points);
+  laser_scan.header.frame_id = frame_id_;
+  laser_scan.range_min = kRangeMin;
+  laser_scan.range_max = kRangeMax;
+  laser_scan.time_increment = scan_duration_ / num_points;
+  laser_scan.scan_time = scan_cycle_time_;
+  laser_scan.ranges.resize(num_points);
+  laser_scan.intensities.resize(num_points);
 
-  // Check for inverted laser. `ranges`/`intensities` are always output in vdAngRAD's
+  // Check for inverted laser. `ranges`/`intensities` are always output in angles_rad's
   // natural (increasing-angle) order when not inverted, and reversed when inverted, so
   // angle_min/angle_max/angle_increment must follow the same convention: angle_min is
   // always the angle of ranges[0] and angle_max the angle of ranges[num_points - 1],
   // per the LaserScan message convention.
   if (inverted_) {
-    laserScan.angle_min = vdAngRAD[num_points - 1];       // angle of ranges[0]
-    laserScan.angle_max = vdAngRAD[0];       // angle of ranges[num_points - 1]
-    laserScan.angle_increment = vdAngRAD[0] - vdAngRAD[1];
+    laser_scan.angle_min = angles_rad[num_points - 1];       // angle of ranges[0]
+    laser_scan.angle_max = angles_rad[0];       // angle of ranges[num_points - 1]
+    laser_scan.angle_increment = angles_rad[0] - angles_rad[1];
     // To be really accurate, we would now invert time_increment. Since ranges[0] is the
     // most recently captured sample when inverted, header.stamp (now()) is left as the
     // capture-completion time and time_increment counts backwards from it.
-    laserScan.time_increment = -laserScan.time_increment;
+    laser_scan.time_increment = -laser_scan.time_increment;
   } else {
-    laserScan.angle_min = vdAngRAD[0];       // angle of ranges[0]
-    laserScan.angle_max = vdAngRAD[num_points - 1];       // angle of ranges[num_points - 1]
-    laserScan.angle_increment = vdAngRAD[1] - vdAngRAD[0];
+    laser_scan.angle_min = angles_rad[0];       // angle of ranges[0]
+    laser_scan.angle_max = angles_rad[num_points - 1];       // angle of ranges[num_points - 1]
+    laser_scan.angle_increment = angles_rad[1] - angles_rad[0];
     // ranges[0] was captured scan_duration_ + scan_delay_ before header.stamp (now()),
     // so shift the stamp back to match time_increment counting forward from ranges[0].
-    laserScan.header.stamp = rclcpp::Time(laserScan.header.stamp) -
+    laser_scan.header.stamp = rclcpp::Time(laser_scan.header.stamp) -
       rclcpp::Duration::from_seconds(scan_duration_) -
       rclcpp::Duration::from_seconds(scan_delay_);
   }
 
   for (int i = 0; i < num_points; i++) {
     if (inverted_) {
-      laserScan.ranges[i] = vdDistM[num_points - 1 - i];
-      laserScan.intensities[i] = vdIntensAU[num_points - 1 - i];
+      laser_scan.ranges[i] = ranges_m[num_points - 1 - i];
+      laser_scan.intensities[i] = intensities_au[num_points - 1 - i];
     } else {
-      laserScan.ranges[i] = vdDistM[i];
-      laserScan.intensities[i] = vdIntensAU[i];
+      laser_scan.ranges[i] = ranges_m[i];
+      laser_scan.intensities[i] = intensities_au[i];
     }
   }
 
   // Publish Laserscan-message
-  laser_scan_pub_->publish(laserScan);
+  laser_scan_pub_->publish(laser_scan);
 }
 
 void SickS300::produceDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat)
