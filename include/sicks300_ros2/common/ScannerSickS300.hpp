@@ -76,16 +76,6 @@ public:
    */
   bool open(const char * pcPort, int iBaudRate, int iScanId);
 
-  // not implemented
-  void resetStartup();
-
-  // not implmented
-  void startScanner();
-
-  // not implemented
-  void stopScanner();
-  // sick_lms.Uninitialize();
-
   // whether the scanner is currently in Standby or not
   bool isInStandby() {return m_bInStandby;}
 
@@ -109,10 +99,8 @@ private:
 
   // Variables
   unsigned char m_ReadBuf[READ_BUF_SIZE + 10];
-  unsigned char m_ReadBuf2[READ_BUF_SIZE + 10];
   unsigned int m_uiSumReadBytes;
   std::vector<int> m_viScanRaw;
-  int m_iPosReadBuf2;
   unsigned char m_iScanId;
   int m_actualBufferSize;
   bool m_bInStandby;
