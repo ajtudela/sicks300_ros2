@@ -16,8 +16,11 @@
 #define SICKS300_ROS2__SICKS300_HPP_
 
 // C++
-#include <vector>
+#include <atomic>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 // ROS
 #include "rclcpp/rclcpp.hpp"
@@ -106,9 +109,24 @@ protected:
   /**
    * @brief Receive the scan
    *
-   * @return true if the scan is received
+   * Runs on the node's executor thread (via the wall timer). Picks up the latest scan
+   * produced by the acquisition thread (if any) and publishes it, then checks whether the
+   * scanner has been silent for longer than `communication_timeout_`.
+   *
+   * @return true if communication with the scanner is within the configured timeout
    */
   bool receiveScan();
+
+  /**
+   * @brief Body of the dedicated acquisition thread
+   *
+   * Continuously blocks on `scanner_.getScan()` (a serial read with a bounded but
+   * potentially non-trivial timeout) and hands off the latest successfully parsed scan to
+   * `receiveScan()` through `pending_scan_`. Running this on its own thread instead of the
+   * timer callback keeps the executor responsive (lifecycle services, other timers) even if
+   * the scanner stops sending data.
+   */
+  void acquisitionLoop();
 
   /**
    * @brief Publish the standby status
@@ -152,8 +170,22 @@ protected:
   bool inverted_, debug_;
   double scan_duration_, scan_cycle_time_, scan_delay_, communication_timeout_;
   std_msgs::msg::Bool in_standby_;
-  rclcpp::Time point_time_communication_ok_;
   ScannerSickS300 scanner_;
+
+  // Scan handed off from the acquisition thread to receiveScan(), guarded by scan_mutex_.
+  struct PendingScan
+  {
+    bool valid = false;
+    bool in_standby = false;
+    std::vector<double> ranges, angles, intensities;
+  };
+
+  std::mutex scan_mutex_;
+  PendingScan pending_scan_;
+  rclcpp::Time point_time_communication_ok_;
+
+  std::thread acquisition_thread_;
+  std::atomic_bool acquisition_running_{false};
 };
 
 }  // namespace sicks300_ros2

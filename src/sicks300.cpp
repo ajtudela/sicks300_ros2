@@ -45,6 +45,11 @@ SickS300::SickS300(const rclcpp::NodeOptions & options)
 
 SickS300::~SickS300()
 {
+  acquisition_running_ = false;
+  if (acquisition_thread_.joinable()) {
+    acquisition_thread_.join();
+  }
+
   if (timer_) {
     timer_->cancel();
     timer_.reset();
@@ -206,6 +211,11 @@ CallbackReturn SickS300::on_activate(const rclcpp_lifecycle::State & state)
   RCLCPP_INFO(this->get_logger(), "Activating the node...");
 
   point_time_communication_ok_ = this->now();
+  pending_scan_ = PendingScan();
+
+  acquisition_running_ = true;
+  acquisition_thread_ = std::thread(&SickS300::acquisitionLoop, this);
+
   timer_ = this->create_wall_timer(
     std::chrono::duration<double>(scan_cycle_time_),
     std::bind(&SickS300::receiveScan, this));
@@ -221,6 +231,11 @@ CallbackReturn SickS300::on_deactivate(const rclcpp_lifecycle::State & state)
   if (timer_) {
     timer_->cancel();
     timer_.reset();
+  }
+
+  acquisition_running_ = false;
+  if (acquisition_thread_.joinable()) {
+    acquisition_thread_.join();
   }
 
   return CallbackReturn::SUCCESS;
@@ -259,12 +274,19 @@ bool SickS300::open()
 
 bool SickS300::receiveScan()
 {
-  std::vector<double> ranges, rangeAngles, intensities;
+  PendingScan scan;
+  rclcpp::Time last_ok;
+  {
+    std::lock_guard<std::mutex> lock(scan_mutex_);
+    if (pending_scan_.valid) {
+      scan = std::move(pending_scan_);
+      pending_scan_ = PendingScan();
+    }
+    last_ok = point_time_communication_ok_;
+  }
 
-  int result = scanner_.getScan(ranges, rangeAngles, intensities, debug_);
-
-  if (result) {
-    if (scanner_.isInStandby()) {
+  if (scan.valid) {
+    if (scan.in_standby) {
       publishWarn("scanner in standby");
       RCLCPP_WARN_THROTTLE(
         this->get_logger(),
@@ -273,20 +295,35 @@ bool SickS300::receiveScan()
       publishStandby(true);
     } else {
       publishStandby(false);
-      publishLaserScan(ranges, rangeAngles, intensities);
-    }
-
-    point_time_communication_ok_ = this->now();
-  } else {
-    rclcpp::Duration diff(this->now() - point_time_communication_ok_);
-
-    if (diff.seconds() > communication_timeout_) {
-      RCLCPP_WARN(this->get_logger(), "Communication timeout");
-      return false;
+      publishLaserScan(scan.ranges, scan.angles, scan.intensities);
     }
   }
 
+  rclcpp::Duration diff(this->now() - last_ok);
+  if (diff.seconds() > communication_timeout_) {
+    RCLCPP_WARN(this->get_logger(), "Communication timeout");
+    return false;
+  }
+
   return true;
+}
+
+void SickS300::acquisitionLoop()
+{
+  while (acquisition_running_.load(std::memory_order_relaxed)) {
+    std::vector<double> ranges, angles, intensities;
+    bool result = scanner_.getScan(ranges, angles, intensities, debug_);
+
+    if (result) {
+      std::lock_guard<std::mutex> lock(scan_mutex_);
+      pending_scan_.valid = true;
+      pending_scan_.in_standby = scanner_.isInStandby();
+      pending_scan_.ranges = std::move(ranges);
+      pending_scan_.angles = std::move(angles);
+      pending_scan_.intensities = std::move(intensities);
+      point_time_communication_ok_ = this->now();
+    }
+  }
 }
 
 void SickS300::publishStandby(bool in_standby)
