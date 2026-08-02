@@ -51,6 +51,7 @@ endif()
 ## Find ament macros and libraries
 find_package(ament_cmake REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(diagnostic_updater REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
@@ -88,6 +89,7 @@ target_include_directories(${library_name} PUBLIC
 target_link_libraries(${library_name}
   PUBLIC
   ${diagnostic_msgs_TARGETS}
+  diagnostic_updater::diagnostic_updater
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
   ${sensor_msgs_TARGETS}
@@ -164,6 +166,7 @@ ament_export_include_directories(include/${PROJECT_NAME})
 ament_export_libraries(${library_name} scanner_serial)
 ament_export_dependencies(
   diagnostic_msgs
+  diagnostic_updater
   rclcpp
   rclcpp_components
   rclcpp_lifecycle
