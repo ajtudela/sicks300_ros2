@@ -204,9 +204,10 @@ void ScannerSickS300::convertScanToPolar(
   bool bInStandby = true;
 
   vecScanPolar.resize(viScanRaw.size());
-  dAngleStep = fabs(param->second.dStopAngle - param->second.dStartAngle) /
-    static_cast<double>(viScanRaw.size() - 1);
-
+  dAngleStep = viScanRaw.size() > 1 ?
+    fabs(param->second.dStopAngle - param->second.dStartAngle) /
+    static_cast<double>(viScanRaw.size() - 1) :
+    0.0;
 
   for (size_t i = 0; i < viScanRaw.size(); i++) {
     dDist = static_cast<double>((viScanRaw[i] & 0x1FFF) * param->second.dScale);

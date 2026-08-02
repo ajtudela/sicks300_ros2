@@ -292,6 +292,13 @@ void SickS300::publishLaserScan(
   const std::vector<double> & vdDistM, const std::vector<double> & vdAngRAD,
   const std::vector<double> & vdIntensAU, unsigned int iSickTimeStamp, unsigned int iSickNow)
 {
+  if (vdDistM.size() < 2) {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Discarding a scan with less than 2 points (got %zu)", vdDistM.size());
+    return;
+  }
+
   // Fill message
   int start_scan = 0;
   int num_readings = vdDistM.size();       // initialize with max scan size
