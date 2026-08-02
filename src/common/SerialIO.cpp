@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-// #include "stdafx.h"
-
 #include <math.h>
 #include <unistd.h>
 #include <errno.h>
@@ -27,17 +25,6 @@
 #include <iostream>
 
 #include "sicks300_ros2/common/SerialIO.hpp"
-
-// #define _PRINT_BYTES
-
-/*
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
-*/
-
 
 bool getBaudrateCode(int iBaudrate, int * iBaudrateCode)
 {
@@ -67,34 +54,8 @@ bool getBaudrateCode(int iBaudrate, int * iBaudrateCode)
       break;
     }
   }
-  /*
-  int iStart = 0;
-  int iEnd = iBaudsLen;
-  int iPos = (iStart + iEnd) / 2;
-  while (  iPos + 1 < iBaudsLen
-         && (iBaudrate < baudTable[iPos] || iBaudrate >= baudTable[iPos + 1])
-         && iPos != 0)
-  {
-        if (iBaudrate < baudTable[iPos])
-        {
-                iEnd = iPos;
-        }
-        else
-        {
-                iStart = iPos;
-        }
-        iPos = (iStart + iEnd) / 2;
-  }
-
-  return baudCodes[iPos];
-  */
   return ret;
 }
-
-
-//////////////////////////////////////////////////////////////////////
-// Konstruktion/Destruktion
-//////////////////////////////////////////////////////////////////////
 
 SerialIO::SerialIO()
 : m_DeviceName(""),
@@ -325,14 +286,6 @@ int SerialIO::readNonBlocking(char * Buffer, int Length)
   ssize_t BytesRead;
 
   BytesRead = read(m_Device, Buffer, iBytesToRead);
-
-  // Debug
-  // printf("%2d Bytes read:", BytesRead);
-  // for (int i = 0; i < BytesRead; i++) {
-  //   unsigned char uc = (unsigned char)Buffer[i];
-  //   printf(" %u", (unsigned int) uc);
-  // }
-  // printf("\n");
 
   return BytesRead;
 }

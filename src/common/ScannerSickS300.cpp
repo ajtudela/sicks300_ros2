@@ -78,9 +78,6 @@ ScannerSickS300::ScannerSickS300()
   // allows to set different Baud-Multipliers depending on used SerialIO-Card
   m_dBaudMult = 1.0;
 
-  // init scan with zeros
-  m_iPosReadBuf2 = 0;
-
   m_actualBufferSize = 0;
 
   m_bInStandby = true;
@@ -117,7 +114,6 @@ bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId = 7)
 
   if (bRetSerial == 0) {
     // Clears the read and transmit buffer.
-    m_iPosReadBuf2 = 0;
     m_SerialIO.purge();
     return true;
   } else {
@@ -129,26 +125,7 @@ bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId = 7)
 //-------------------------------------------
 void ScannerSickS300::purgeScanBuf()
 {
-  m_iPosReadBuf2 = 0;
   m_SerialIO.purge();
-}
-
-
-//-------------------------------------------
-void ScannerSickS300::resetStartup()
-{
-}
-
-
-//-------------------------------------------
-void ScannerSickS300::startScanner()
-{
-}
-
-
-//-------------------------------------------
-void ScannerSickS300::stopScanner()
-{
 }
 
 //-----------------------------------------------
