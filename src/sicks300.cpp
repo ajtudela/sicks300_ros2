@@ -304,29 +304,36 @@ void SickS300::publishLaserScan(
 
   // Fill message
   laserScan.header.frame_id = frame_id_;
-  laserScan.angle_increment = vdAngRAD[start_scan + 1] - vdAngRAD[start_scan];
   laserScan.range_min = 0.001;
   // Though the specs state otherwise, the max range reported by the scanner is 29.96m
   laserScan.range_max = 29.5;
   laserScan.time_increment = (scan_duration_) / (vdDistM.size());
+  laserScan.scan_time = scan_cycle_time_;
 
   // Rescale scan
   num_readings = vdDistM.size();
-  laserScan.angle_min = vdAngRAD[start_scan];       // first ScanAngle
-  laserScan.angle_max = vdAngRAD[stop_scan - 1];       // last ScanAngle
   laserScan.ranges.resize(num_readings);
   laserScan.intensities.resize(num_readings);
 
-  // Check for inverted laser
+  // Check for inverted laser. `ranges`/`intensities` are always output in vdAngRAD's
+  // natural (increasing-angle) order when not inverted, and reversed when inverted, so
+  // angle_min/angle_max/angle_increment must follow the same convention: angle_min is
+  // always the angle of ranges[0] and angle_max the angle of ranges[num_readings - 1],
+  // per the LaserScan message convention.
   if (inverted_) {
-    // to be really accurate, we now invert time_increment
-    // laserScan.header.stamp = rclcpp::Time(laserScan.header.stamp) +
-    // rclcpp::Duration::from_seconds(scanDuration_);
-    // Adding of the sum over all negative increments would be mathematically correct,
-    // but looks worse.
+    laserScan.angle_min = vdAngRAD[stop_scan - 1];       // angle of ranges[0]
+    laserScan.angle_max = vdAngRAD[start_scan];       // angle of ranges[num_readings - 1]
+    laserScan.angle_increment = vdAngRAD[start_scan] - vdAngRAD[start_scan + 1];
+    // To be really accurate, we would now invert time_increment. Since ranges[0] is the
+    // most recently captured sample when inverted, header.stamp (now()) is left as the
+    // capture-completion time and time_increment counts backwards from it.
     laserScan.time_increment = -laserScan.time_increment;
   } else {
-    // to be consistent with the omission of the addition above
+    laserScan.angle_min = vdAngRAD[start_scan];       // angle of ranges[0]
+    laserScan.angle_max = vdAngRAD[stop_scan - 1];       // angle of ranges[num_readings - 1]
+    laserScan.angle_increment = vdAngRAD[start_scan + 1] - vdAngRAD[start_scan];
+    // ranges[0] was captured scan_duration_ + scan_delay_ before header.stamp (now()),
+    // so shift the stamp back to match time_increment counting forward from ranges[0].
     laserScan.header.stamp = rclcpp::Time(laserScan.header.stamp) -
       rclcpp::Duration::from_seconds(scan_duration_) -
       rclcpp::Duration::from_seconds(scan_delay_);
