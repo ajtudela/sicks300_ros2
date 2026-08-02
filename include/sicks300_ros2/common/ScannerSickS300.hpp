@@ -113,7 +113,7 @@ private:
   unsigned int m_uiSumReadBytes;
   std::vector<int> m_viScanRaw;
   int m_iPosReadBuf2;
-  static unsigned char m_iScanId;
+  unsigned char m_iScanId;
   int m_actualBufferSize;
   bool m_bInStandby;
 

@@ -22,7 +22,6 @@
 typedef unsigned char BYTE;
 
 const double ScannerSickS300::c_dPi = 3.14159265358979323846;
-unsigned char ScannerSickS300::m_iScanId = 7;
 
 const uint16_t crc_LookUpTable[256] =
 {
@@ -85,6 +84,9 @@ ScannerSickS300::ScannerSickS300()
   m_actualBufferSize = 0;
 
   m_bInStandby = true;
+
+  // default scanner id, overwritten by open()
+  m_iScanId = 7;
 }
 
 
