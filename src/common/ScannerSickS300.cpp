@@ -76,7 +76,8 @@ unsigned int TelegramParser::createCRC(uint8_t * ptrData, int Size)
 }
 
 //-----------------------------------------------
-ScannerSickS300::ScannerSickS300()
+ScannerSickS300::ScannerSickS300(std::unique_ptr<ISerialIO> serial_io)
+: m_SerialIO(std::move(serial_io))
 {
   // allows to set different Baud-Multipliers depending on used SerialIO-Card
   m_dBaudMult = 1.0;
@@ -93,7 +94,7 @@ ScannerSickS300::ScannerSickS300()
 //-------------------------------------------
 ScannerSickS300::~ScannerSickS300()
 {
-  m_SerialIO.closeIO();
+  m_SerialIO->closeIO();
 }
 
 
@@ -106,18 +107,18 @@ bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId)
   m_iScanId = iScanId;
 
   // initialize Serial Interface
-  m_SerialIO.setBaudRate(iBaudRate);
-  m_SerialIO.setDeviceName(pcPort);
-  m_SerialIO.setBufferSize(READ_BUF_SIZE - 10, WRITE_BUF_SIZE - 10);
-  m_SerialIO.setHandshake(SerialIO::HS_NONE);
-  m_SerialIO.setMultiplier(m_dBaudMult);
-  bRetSerial = m_SerialIO.openIO();
-  m_SerialIO.setTimeout(0.0);
-  m_SerialIO.SetFormat(8, SerialIO::PA_NONE, SerialIO::SB_ONE);
+  m_SerialIO->setBaudRate(iBaudRate);
+  m_SerialIO->setDeviceName(pcPort);
+  m_SerialIO->setBufferSize(READ_BUF_SIZE - 10, WRITE_BUF_SIZE - 10);
+  m_SerialIO->setHandshake(ISerialIO::HS_NONE);
+  m_SerialIO->setMultiplier(m_dBaudMult);
+  bRetSerial = m_SerialIO->openIO();
+  m_SerialIO->setTimeout(0.0);
+  m_SerialIO->SetFormat(8, ISerialIO::PA_NONE, ISerialIO::SB_ONE);
 
   if (bRetSerial == 0) {
     // Clears the read and transmit buffer.
-    m_SerialIO.purge();
+    m_SerialIO->purge();
     return true;
   } else {
     return false;
@@ -128,7 +129,7 @@ bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId)
 //-------------------------------------------
 void ScannerSickS300::purgeScanBuf()
 {
-  m_SerialIO.purge();
+  m_SerialIO->purge();
 }
 
 //-----------------------------------------------
@@ -144,7 +145,7 @@ bool ScannerSickS300::getScan(
     m_actualBufferSize = 0;
   }
 
-  iNumRead2 = m_SerialIO.readBlocking(
+  iNumRead2 = m_SerialIO->readBlocking(
     reinterpret_cast<char *>(m_ReadBuf) + m_actualBufferSize,
     SCANNER_S300_READ_BUF_SIZE - 2 - m_actualBufferSize);
   if (iNumRead2 <= 0) {return false;}

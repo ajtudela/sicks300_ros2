@@ -22,9 +22,11 @@
 #include <stdio.h>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "sicks300_ros2/common/ISerialIO.hpp"
 #include "sicks300_ros2/common/SerialIO.hpp"
 #include "sicks300_ros2/common/TelegramS300.hpp"
 
@@ -62,8 +64,12 @@ public:
     WRITE_BUF_SIZE = 10000
   };
 
-  // Constructor
-  ScannerSickS300();
+  /**
+   * @brief Construct a new Scanner Sick S300 object.
+   * @param serial_io Transport used to talk to the scanner. Defaults to the real serial
+   * port implementation; tests can inject a fake to replay captured telegrams.
+   */
+  explicit ScannerSickS300(std::unique_ptr<ISerialIO> serial_io = std::make_unique<SerialIO>());
 
   // Destructor
   ~ScannerSickS300();
@@ -105,7 +111,7 @@ private:
   bool m_bInStandby;
 
   // Components
-  SerialIO m_SerialIO;
+  std::unique_ptr<ISerialIO> m_SerialIO;
   TelegramParser tp_;
 
   // Functions
