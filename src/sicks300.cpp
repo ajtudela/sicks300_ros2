@@ -289,8 +289,8 @@ void SickS300::publishStandby(bool in_standby)
 }
 
 void SickS300::publishLaserScan(
-  std::vector<double> vdDistM, std::vector<double> vdAngRAD,
-  std::vector<double> vdIntensAU, unsigned int iSickTimeStamp, unsigned int iSickNow)
+  const std::vector<double> & vdDistM, const std::vector<double> & vdAngRAD,
+  const std::vector<double> & vdIntensAU, unsigned int iSickTimeStamp, unsigned int iSickNow)
 {
   // Fill message
   int start_scan = 0;
@@ -375,7 +375,7 @@ void SickS300::publishLaserScan(
   diag_pub_->publish(diagnostics);
 }
 
-void SickS300::publishError(std::string error)
+void SickS300::publishError(const std::string & error)
 {
   diagnostic_msgs::msg::DiagnosticArray diagnostics;
   diagnostics.header.stamp = this->now();
@@ -386,7 +386,7 @@ void SickS300::publishError(std::string error)
   diag_pub_->publish(diagnostics);
 }
 
-void SickS300::publishWarn(std::string warn)
+void SickS300::publishWarn(const std::string & warn)
 {
   diagnostic_msgs::msg::DiagnosticArray diagnostics;
   diagnostics.header.stamp = this->now();
