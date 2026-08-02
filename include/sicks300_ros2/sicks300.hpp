@@ -176,6 +176,7 @@ protected:
   double scan_duration_, scan_cycle_time_, scan_delay_, communication_timeout_;
   std_msgs::msg::Bool in_standby_;
   rclcpp::Time synced_ros_time_;
+  rclcpp::Time point_time_communication_ok_;
   ScannerSickS300 scanner_;
 };
 

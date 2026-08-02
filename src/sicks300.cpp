@@ -29,7 +29,8 @@ SickS300::SickS300(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("sicks300", "", options),
   synced_time_ready_(false),
   synced_sick_stamp_(0),
-  synced_ros_time_(this->now())
+  synced_ros_time_(this->now()),
+  point_time_communication_ok_(this->now())
 {
 }
 
@@ -195,6 +196,7 @@ CallbackReturn SickS300::on_activate(const rclcpp_lifecycle::State & state)
   LifecycleNode::on_activate(state);
   RCLCPP_INFO(this->get_logger(), "Activating the node...");
 
+  point_time_communication_ok_ = this->now();
   timer_ = this->create_wall_timer(
     std::chrono::duration<double>(scan_cycle_time_),
     std::bind(&SickS300::receiveScan, this));
@@ -254,7 +256,6 @@ bool SickS300::receiveScan()
   int result = scanner_.getScan(
     ranges, rangeAngles, intensities,
     iSickTimeStamp, iSickNow, debug_);
-  static rclcpp::Time pointTimeCommunicationOK(this->now());
 
   if (result) {
     if (scanner_.isInStandby()) {
@@ -268,9 +269,9 @@ bool SickS300::receiveScan()
       publishLaserScan(ranges, rangeAngles, intensities, iSickTimeStamp, iSickNow);
     }
 
-    pointTimeCommunicationOK = this->now();
+    point_time_communication_ok_ = this->now();
   } else {
-    rclcpp::Duration diff(this->now() - pointTimeCommunicationOK);
+    rclcpp::Duration diff(this->now() - point_time_communication_ok_);
 
     if (diff.seconds() > communication_timeout_) {
       RCLCPP_WARN(this->get_logger(), "Communication timeout");
