@@ -107,6 +107,10 @@ rclcpp_components_register_nodes(${library_name} "sicks300_ros2::SickS300")
 add_executable(scan_filter
   src/scan_filter.cpp
 )
+target_include_directories(scan_filter PRIVATE
+  "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+  "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
+)
 target_link_libraries(scan_filter
   PRIVATE
   rclcpp::rclcpp
