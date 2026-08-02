@@ -17,6 +17,7 @@
 
 // C++
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -29,7 +30,7 @@
 #include "lifecycle_msgs/msg/transition.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
-#include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "diagnostic_updater/diagnostic_updater.hpp"
 
 // Common
 #include "sicks300_ros2/common/ScannerSickS300.hpp"
@@ -146,22 +147,20 @@ protected:
     const std::vector<double> & vdIntensAU);
 
   /**
-   * @brief Publish an error message
+   * @brief Fill out the scanner's DiagnosticStatus for diagnostic_updater
    *
-   * @param error Error message
-   */
-  void publishError(const std::string & error);
-
-  /**
-   * @brief Publish a warning message
+   * Called by `diagnostic_updater_` on its own schedule (~1Hz by default), acting as the
+   * single point of truth for `/diagnostics`: it just reports the latest `scanner_status_`
+   * set by `receiveScan()`, instead of every caller building and publishing its own
+   * DiagnosticArray at the (much higher) scan rate.
    *
-   * @param warn Warning message
+   * @param stat Diagnostic status to fill out
    */
-  void publishWarn(const std::string & warn);
+  void produceDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>::SharedPtr in_standby_pub_;
-  rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diag_pub_;
+  std::unique_ptr<diagnostic_updater::Updater> diagnostic_updater_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::string frame_id_, scan_topic_, port_;
@@ -185,6 +184,12 @@ protected:
 
   std::thread acquisition_thread_;
   std::atomic_bool acquisition_running_{false};
+
+  // Latest status reported by receiveScan(), read back by produceDiagnostics(). Both run on
+  // the executor thread (wall timer / diagnostic_updater's own timer), so no locking needed.
+  enum class ScannerStatus {kOk, kStandby, kCommunicationError};
+  ScannerStatus scanner_status_ = ScannerStatus::kOk;
+  std::string scanner_status_message_;
 };
 
 }  // namespace sicks300_ros2

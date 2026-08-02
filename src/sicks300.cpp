@@ -187,8 +187,13 @@ CallbackReturn SickS300::on_configure(const rclcpp_lifecycle::State &)
     scan_topic_, rclcpp::SystemDefaultsQoS());
   in_standby_pub_ = this->create_publisher<std_msgs::msg::Bool>(
     scan_topic_ + "/standby", latched_profile);
-  diag_pub_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-    "/diagnostics", rclcpp::QoS(1));
+
+  // Configure diagnostics: a single task reporting the latest status set by receiveScan(),
+  // published on its own (~1Hz by default) schedule instead of once per scan cycle.
+  scanner_status_ = ScannerStatus::kOk;
+  diagnostic_updater_ = std::make_unique<diagnostic_updater::Updater>(this);
+  diagnostic_updater_->setHardwareID(port_);
+  diagnostic_updater_->add("Sick S300 scanner", this, &SickS300::produceDiagnostics);
 
   // Open the laser scanner
   bool bOpenScan = this->open();
@@ -251,7 +256,7 @@ CallbackReturn SickS300::on_cleanup(const rclcpp_lifecycle::State &)
   // Release the shared pointers
   laser_scan_pub_.reset();
   in_standby_pub_.reset();
-  diag_pub_.reset();
+  diagnostic_updater_.reset();
   timer_.reset();
 
   return CallbackReturn::SUCCESS;
@@ -264,7 +269,7 @@ CallbackReturn SickS300::on_shutdown(const rclcpp_lifecycle::State & state)
   // Release the shared pointers
   laser_scan_pub_.reset();
   in_standby_pub_.reset();
-  diag_pub_.reset();
+  diagnostic_updater_.reset();
   timer_.reset();
 
   return CallbackReturn::SUCCESS;
@@ -290,13 +295,14 @@ void SickS300::receiveScan()
 
   if (scan.valid) {
     if (scan.in_standby) {
-      publishWarn("scanner in standby");
+      scanner_status_ = ScannerStatus::kStandby;
       RCLCPP_WARN_THROTTLE(
         this->get_logger(),
         *this->get_clock(), kStandbyWarnThrottlePeriod.count(),
         "scanner on port %s in standby", port_.c_str());
       publishStandby(true);
     } else {
+      scanner_status_ = ScannerStatus::kOk;
       publishStandby(false);
       publishLaserScan(scan.ranges, scan.angles, scan.intensities);
     }
@@ -304,7 +310,8 @@ void SickS300::receiveScan()
 
   rclcpp::Duration diff(this->now() - last_ok);
   if (diff.seconds() > communication_timeout_) {
-    publishError("communication timeout");
+    scanner_status_ = ScannerStatus::kCommunicationError;
+    scanner_status_message_ = "communication timeout";
     RCLCPP_ERROR_THROTTLE(
       this->get_logger(),
       *this->get_clock(), kCommunicationTimeoutThrottlePeriod.count(),
@@ -399,37 +406,21 @@ void SickS300::publishLaserScan(
 
   // Publish Laserscan-message
   laser_scan_pub_->publish(laserScan);
-
-  // Diagnostics
-  diagnostic_msgs::msg::DiagnosticArray diagnostics;
-  diagnostics.header.stamp = this->now();
-  diagnostics.status.resize(1);
-  diagnostics.status[0].level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-  diagnostics.status[0].name = this->get_namespace();
-  diagnostics.status[0].message = "sick scanner running";
-  diag_pub_->publish(diagnostics);
 }
 
-void SickS300::publishError(const std::string & error)
+void SickS300::produceDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  diagnostic_msgs::msg::DiagnosticArray diagnostics;
-  diagnostics.header.stamp = this->now();
-  diagnostics.status.resize(1);
-  diagnostics.status[0].level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-  diagnostics.status[0].name = this->get_namespace();
-  diagnostics.status[0].message = error;
-  diag_pub_->publish(diagnostics);
-}
-
-void SickS300::publishWarn(const std::string & warn)
-{
-  diagnostic_msgs::msg::DiagnosticArray diagnostics;
-  diagnostics.header.stamp = this->now();
-  diagnostics.status.resize(1);
-  diagnostics.status[0].level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-  diagnostics.status[0].name = this->get_namespace();
-  diagnostics.status[0].message = warn;
-  diag_pub_->publish(diagnostics);
+  switch (scanner_status_) {
+    case ScannerStatus::kOk:
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "sick scanner running");
+      break;
+    case ScannerStatus::kStandby:
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "scanner in standby");
+      break;
+    case ScannerStatus::kCommunicationError:
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, scanner_status_message_);
+      break;
+  }
 }
 
 }  // namespace sicks300_ros2
