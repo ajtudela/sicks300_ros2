@@ -74,7 +74,7 @@ public:
    * @param iBaudRate baud rate
    * @param iScanId the scanner id in the data header (7 by default)
    */
-  bool open(const char * pcPort, int iBaudRate, int iScanId);
+  bool open(const char * pcPort, int iBaudRate, int iScanId = 7);
 
   // whether the scanner is currently in Standby or not
   bool isInStandby() {return m_bInStandby;}

@@ -25,6 +25,18 @@ using namespace std::chrono_literals;
 namespace sicks300_ros2
 {
 
+namespace
+{
+// Though the specs state otherwise, the minimum/maximum range reported by the scanner
+// is 0.001m / 29.96m.
+constexpr double kRangeMin = 0.001;
+constexpr double kRangeMax = 29.5;
+// Time to wait for the scanner to start streaming data after opening the serial port.
+constexpr auto kScannerStartupDelay = std::chrono::milliseconds(1000);
+// Minimum period between consecutive "scanner in standby" warnings.
+constexpr auto kStandbyWarnThrottlePeriod = std::chrono::milliseconds(30);
+}  // namespace
+
 SickS300::SickS300(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("sicks300", "", options),
   point_time_communication_ok_(this->now())
@@ -179,7 +191,7 @@ CallbackReturn SickS300::on_configure(const rclcpp_lifecycle::State &)
     return CallbackReturn::FAILURE;
   } else {
     // Wait for scan to get ready if successful
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::this_thread::sleep_for(kScannerStartupDelay);
     RCLCPP_INFO(
       this->get_logger(),
       "...scanner opened successfully on port %s", port_.c_str());
@@ -256,7 +268,8 @@ bool SickS300::receiveScan()
       publishWarn("scanner in standby");
       RCLCPP_WARN_THROTTLE(
         this->get_logger(),
-        *this->get_clock(), 30, "scanner on port %s in standby", port_.c_str());
+        *this->get_clock(), kStandbyWarnThrottlePeriod.count(),
+        "scanner on port %s in standby", port_.c_str());
       publishStandby(true);
     } else {
       publishStandby(false);
@@ -293,10 +306,7 @@ void SickS300::publishLaserScan(
     return;
   }
 
-  // Fill message
-  int start_scan = 0;
-  int num_readings = vdDistM.size();       // initialize with max scan size
-  int stop_scan = vdDistM.size();
+  const int num_points = static_cast<int>(vdDistM.size());
 
   // Create LaserScan message
   sensor_msgs::msg::LaserScan laserScan;
@@ -304,34 +314,30 @@ void SickS300::publishLaserScan(
 
   // Fill message
   laserScan.header.frame_id = frame_id_;
-  laserScan.range_min = 0.001;
-  // Though the specs state otherwise, the max range reported by the scanner is 29.96m
-  laserScan.range_max = 29.5;
-  laserScan.time_increment = (scan_duration_) / (vdDistM.size());
+  laserScan.range_min = kRangeMin;
+  laserScan.range_max = kRangeMax;
+  laserScan.time_increment = scan_duration_ / num_points;
   laserScan.scan_time = scan_cycle_time_;
-
-  // Rescale scan
-  num_readings = vdDistM.size();
-  laserScan.ranges.resize(num_readings);
-  laserScan.intensities.resize(num_readings);
+  laserScan.ranges.resize(num_points);
+  laserScan.intensities.resize(num_points);
 
   // Check for inverted laser. `ranges`/`intensities` are always output in vdAngRAD's
   // natural (increasing-angle) order when not inverted, and reversed when inverted, so
   // angle_min/angle_max/angle_increment must follow the same convention: angle_min is
-  // always the angle of ranges[0] and angle_max the angle of ranges[num_readings - 1],
+  // always the angle of ranges[0] and angle_max the angle of ranges[num_points - 1],
   // per the LaserScan message convention.
   if (inverted_) {
-    laserScan.angle_min = vdAngRAD[stop_scan - 1];       // angle of ranges[0]
-    laserScan.angle_max = vdAngRAD[start_scan];       // angle of ranges[num_readings - 1]
-    laserScan.angle_increment = vdAngRAD[start_scan] - vdAngRAD[start_scan + 1];
+    laserScan.angle_min = vdAngRAD[num_points - 1];       // angle of ranges[0]
+    laserScan.angle_max = vdAngRAD[0];       // angle of ranges[num_points - 1]
+    laserScan.angle_increment = vdAngRAD[0] - vdAngRAD[1];
     // To be really accurate, we would now invert time_increment. Since ranges[0] is the
     // most recently captured sample when inverted, header.stamp (now()) is left as the
     // capture-completion time and time_increment counts backwards from it.
     laserScan.time_increment = -laserScan.time_increment;
   } else {
-    laserScan.angle_min = vdAngRAD[start_scan];       // angle of ranges[0]
-    laserScan.angle_max = vdAngRAD[stop_scan - 1];       // angle of ranges[num_readings - 1]
-    laserScan.angle_increment = vdAngRAD[start_scan + 1] - vdAngRAD[start_scan];
+    laserScan.angle_min = vdAngRAD[0];       // angle of ranges[0]
+    laserScan.angle_max = vdAngRAD[num_points - 1];       // angle of ranges[num_points - 1]
+    laserScan.angle_increment = vdAngRAD[1] - vdAngRAD[0];
     // ranges[0] was captured scan_duration_ + scan_delay_ before header.stamp (now()),
     // so shift the stamp back to match time_increment counting forward from ranges[0].
     laserScan.header.stamp = rclcpp::Time(laserScan.header.stamp) -
@@ -339,13 +345,13 @@ void SickS300::publishLaserScan(
       rclcpp::Duration::from_seconds(scan_delay_);
   }
 
-  for (int i = 0; i < (stop_scan - start_scan); i++) {
+  for (int i = 0; i < num_points; i++) {
     if (inverted_) {
-      laserScan.ranges[i] = vdDistM[stop_scan - 1 - i];
-      laserScan.intensities[i] = vdIntensAU[stop_scan - 1 - i];
+      laserScan.ranges[i] = vdDistM[num_points - 1 - i];
+      laserScan.intensities[i] = vdIntensAU[num_points - 1 - i];
     } else {
-      laserScan.ranges[i] = vdDistM[start_scan + i];
-      laserScan.intensities[i] = vdIntensAU[start_scan + i];
+      laserScan.ranges[i] = vdDistM[i];
+      laserScan.intensities[i] = vdIntensAU[i];
     }
   }
 

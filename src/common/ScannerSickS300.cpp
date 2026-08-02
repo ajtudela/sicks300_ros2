@@ -98,7 +98,7 @@ ScannerSickS300::~ScannerSickS300()
 
 
 // ---------------------------------------------------------------------------
-bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId = 7)
+bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId)
 {
   int bRetSerial;
 

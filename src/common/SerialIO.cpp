@@ -22,9 +22,14 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/serial.h>
-#include <iostream>
 
+#include "rcutils/logging_macros.h"
 #include "sicks300_ros2/common/SerialIO.hpp"
+
+namespace
+{
+constexpr const char * kLoggerName = "sicks300_ros2.serial_io";
+}  // namespace
 
 bool getBaudrateCode(int iBaudrate, int * iBaudrateCode)
 {
@@ -88,9 +93,9 @@ int SerialIO::openIO()
   m_Device = open(m_DeviceName.c_str(), O_RDWR | O_NOCTTY /*| O_NONBLOCK*/);
 
   if (m_Device < 0) {
-    // RF_ERR("Open " << m_DeviceName << " failed, error code " << errno);
-    std::cout << "Trying to open " << m_DeviceName << " failed: "
-              << strerror(errno) << " (Error code " << errno << ")" << std::endl;
+    RCUTILS_LOG_ERROR_NAMED(
+      kLoggerName, "Trying to open %s failed: %s (Error code %d)",
+      m_DeviceName.c_str(), strerror(errno), errno);
 
     return -1;
   }
@@ -98,8 +103,9 @@ int SerialIO::openIO()
   // set parameters
   Res = tcgetattr(m_Device, &m_tio);
   if (Res == -1) {
-    std::cout << "tcgetattr of " << m_DeviceName << " failed: "
-              << strerror(errno) << " (Error code " << errno << ")" << std::endl;
+    RCUTILS_LOG_ERROR_NAMED(
+      kLoggerName, "tcgetattr of %s failed: %s (Error code %d)",
+      m_DeviceName.c_str(), strerror(errno), errno);
 
     close(m_Device);
     m_Device = -1;
@@ -136,7 +142,7 @@ int SerialIO::openIO()
 
   // set baud rate
   int iNewBaudrate = static_cast<int>(m_BaudRate * m_Multiplier + 0.5);
-  std::cout << "Setting Baudrate to " << iNewBaudrate << std::endl;
+  RCUTILS_LOG_INFO_NAMED(kLoggerName, "Setting Baudrate to %d", iNewBaudrate);
 
   int iBaudrateCode = 0;
   bool bBaudrateValid = getBaudrateCode(iNewBaudrate, &iBaudrateCode);
@@ -145,7 +151,8 @@ int SerialIO::openIO()
   cfsetospeed(&m_tio, iBaudrateCode);
 
   if (!bBaudrateValid) {
-    std::cout << "Baudrate code not available - setting baudrate directly" << std::endl;
+    RCUTILS_LOG_WARN_NAMED(
+      kLoggerName, "Baudrate code not available - setting baudrate directly");
     struct serial_struct ss;
     ioctl(m_Device, TIOCGSERIAL, &ss);
     ss.flags |= ASYNC_SPD_CUST;
@@ -221,8 +228,9 @@ int SerialIO::openIO()
   Res = tcsetattr(m_Device, TCSANOW, &m_tio);
 
   if (Res == -1) {
-    std::cout << "tcsetattr " << m_DeviceName << " failed: "
-              << strerror(errno) << " (Error code " << errno << ")" << std::endl;
+    RCUTILS_LOG_ERROR_NAMED(
+      kLoggerName, "tcsetattr %s failed: %s (Error code %d)",
+      m_DeviceName.c_str(), strerror(errno), errno);
 
     close(m_Device);
     m_Device = -1;

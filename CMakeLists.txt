@@ -54,6 +54,7 @@ find_package(diagnostic_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(rcutils REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 ###########
@@ -70,6 +71,10 @@ add_library(scanner_serial SHARED
 target_include_directories(scanner_serial PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
+)
+target_link_libraries(scanner_serial
+  PRIVATE
+  rcutils::rcutils
 )
 
 # Main library
