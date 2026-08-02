@@ -26,6 +26,13 @@ public:
   ScanFilter()
   : Node("scan_filter")
   {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "The 'scan_filter' node is a lightweight, unmaintained reimplementation of angular "
+      "bounds filtering. Prefer the 'laser_filters/LaserScanAngularBoundsFilter' plugin "
+      "(package 'laser_filters', already an exec_depend of this package) for new setups; "
+      "see the README for a ready-to-use configuration.");
+
     sicks300_ros2::declare_parameter_if_not_declared(
       this, "lower_angle",
       rclcpp::ParameterValue(0.0), rcl_interfaces::msg::ParameterDescriptor()
