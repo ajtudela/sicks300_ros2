@@ -35,6 +35,8 @@ constexpr double kRangeMax = 29.5;
 constexpr auto kScannerStartupDelay = std::chrono::milliseconds(1000);
 // Minimum period between consecutive "scanner in standby" warnings.
 constexpr auto kStandbyWarnThrottlePeriod = std::chrono::milliseconds(30);
+// Minimum period between consecutive "communication timeout" error logs.
+constexpr auto kCommunicationTimeoutThrottlePeriod = std::chrono::milliseconds(1000);
 }  // namespace
 
 SickS300::SickS300(const rclcpp::NodeOptions & options)
@@ -142,7 +144,8 @@ CallbackReturn SickS300::on_configure(const rclcpp_lifecycle::State &)
   declare_parameter_if_not_declared(
     this, "communication_timeout", rclcpp::ParameterValue(0.2),
     rcl_interfaces::msg::ParameterDescriptor()
-    .set__description("Timeout to shutdown the node"));
+    .set__description(
+      "Time without a valid scan before reporting a communication error diagnostic"));
   this->get_parameter("communication_timeout", communication_timeout_);
   RCLCPP_INFO(
     this->get_logger(),
@@ -272,7 +275,7 @@ bool SickS300::open()
   return scanner_.open(port_.c_str(), baud_, scan_id_);
 }
 
-bool SickS300::receiveScan()
+void SickS300::receiveScan()
 {
   PendingScan scan;
   rclcpp::Time last_ok;
@@ -301,11 +304,13 @@ bool SickS300::receiveScan()
 
   rclcpp::Duration diff(this->now() - last_ok);
   if (diff.seconds() > communication_timeout_) {
-    RCLCPP_WARN(this->get_logger(), "Communication timeout");
-    return false;
+    publishError("communication timeout");
+    RCLCPP_ERROR_THROTTLE(
+      this->get_logger(),
+      *this->get_clock(), kCommunicationTimeoutThrottlePeriod.count(),
+      "Communication timeout on port %s (%.3fs since last valid scan)",
+      port_.c_str(), diff.seconds());
   }
-
-  return true;
 }
 
 void SickS300::acquisitionLoop()

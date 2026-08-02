@@ -133,7 +133,7 @@ Driver for the Sick S300 Safety laser scanners.
 
 * **`communication_timeout`** (double, default: 0.2)
 
-	Timeout to shutdown the node in seconds.
+	Time without a valid scan before reporting a communication error diagnostic, in seconds.
 
 * **`fields`**
 

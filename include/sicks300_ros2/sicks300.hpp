@@ -111,11 +111,10 @@ protected:
    *
    * Runs on the node's executor thread (via the wall timer). Picks up the latest scan
    * produced by the acquisition thread (if any) and publishes it, then checks whether the
-   * scanner has been silent for longer than `communication_timeout_`.
-   *
-   * @return true if communication with the scanner is within the configured timeout
+   * scanner has been silent for longer than `communication_timeout_`; if so, reports it
+   * through an ERROR diagnostic instead of silently doing nothing.
    */
-  bool receiveScan();
+  void receiveScan();
 
   /**
    * @brief Body of the dedicated acquisition thread
