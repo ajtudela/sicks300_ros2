@@ -22,6 +22,16 @@
 
 //-----------------------------------------------
 
+namespace
+{
+// Read timeout for the serial port: bounds how long readBlocking() can block for when the
+// scanner stops sending data at all, so the caller (see SickS300::receiveScan) can detect a
+// communication timeout instead of hanging forever. It is intentionally independent from the
+// user-configurable `communication_timeout` ROS parameter, which governs how long the caller
+// tolerates *consecutive* read timeouts before reporting an error, not a single read() call.
+constexpr double kReadTimeoutSec = 0.5;
+}  // namespace
+
 typedef unsigned char BYTE;
 
 const double ScannerSickS300::c_dPi = 3.14159265358979323846;
@@ -113,7 +123,7 @@ bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId)
   m_SerialIO->setHandshake(ISerialIO::HS_NONE);
   m_SerialIO->setMultiplier(m_dBaudMult);
   bRetSerial = m_SerialIO->openIO();
-  m_SerialIO->setTimeout(0.0);
+  m_SerialIO->setTimeout(kReadTimeoutSec);
   m_SerialIO->SetFormat(8, ISerialIO::PA_NONE, ISerialIO::SB_ONE);
 
   if (bRetSerial == 0) {

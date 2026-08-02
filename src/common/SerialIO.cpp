@@ -259,7 +259,19 @@ void SerialIO::setTimeout(double Timeout)
 {
   m_Timeout = Timeout;
   if (m_Device != -1) {
-    m_tio.c_cc[VTIME] = cc_t(ceil(m_Timeout * 10.0));
+    if (Timeout > 0.0) {
+      // VMIN=0, VTIME>0: read() waits up to Timeout seconds for at least one byte and
+      // returns 0 if none arrive. This is the only VMIN/VTIME combination that yields a
+      // true wall-clock read timeout: with VMIN>0, the VTIME inter-byte timer only starts
+      // once the first byte has been received, so read() would still block forever if the
+      // peer never sends anything at all.
+      m_tio.c_cc[VMIN] = 0;
+      m_tio.c_cc[VTIME] = cc_t(ceil(m_Timeout * 10.0));
+    } else {
+      // VMIN=1, VTIME=0: fully blocking read until at least one byte arrives.
+      m_tio.c_cc[VMIN] = 1;
+      m_tio.c_cc[VTIME] = 0;
+    }
     tcsetattr(m_Device, TCSANOW, &m_tio);
   }
 }
