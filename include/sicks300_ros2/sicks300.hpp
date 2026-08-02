@@ -123,12 +123,10 @@ protected:
    * @param vdDistM Vector of distances in meters
    * @param vdAngRAD Vector of angles in radians
    * @param vdIntensAU Vector of intensities in arbitrary units
-   * @param iSickTimeStamp Timestamp of the scan
-   * @param iSickNow Current timestamp
    */
   void publishLaserScan(
     const std::vector<double> & vdDistM, const std::vector<double> & vdAngRAD,
-    const std::vector<double> & vdIntensAU, unsigned int iSickTimeStamp, unsigned int iSickNow);
+    const std::vector<double> & vdIntensAU);
 
   /**
    * @brief Publish an error message
@@ -151,11 +149,9 @@ protected:
 
   std::string frame_id_, scan_topic_, port_;
   int baud_, scan_id_;
-  bool inverted_, debug_, synced_time_ready_;
-  unsigned int synced_sick_stamp_;
+  bool inverted_, debug_;
   double scan_duration_, scan_cycle_time_, scan_delay_, communication_timeout_;
   std_msgs::msg::Bool in_standby_;
-  rclcpp::Time synced_ros_time_;
   rclcpp::Time point_time_communication_ok_;
   ScannerSickS300 scanner_;
 };

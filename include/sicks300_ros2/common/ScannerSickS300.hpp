@@ -83,8 +83,7 @@ public:
 
   bool getScan(
     std::vector<double> & vdDistanceM, std::vector<double> & vdAngleRAD,
-    std::vector<double> & vdIntensityAU, unsigned int & iTimestamp,
-    unsigned int & iTimeNow, const bool debug);
+    std::vector<double> & vdIntensityAU, const bool debug);
 
   void setRangeField(const int field, const ParamType & param) {m_Params[field] = param;}
 
