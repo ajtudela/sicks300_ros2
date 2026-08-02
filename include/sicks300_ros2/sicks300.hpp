@@ -30,6 +30,7 @@
 
 // Common
 #include "sicks300_ros2/common/ScannerSickS300.hpp"
+#include "sicks300_ros2/common/parameter_utils.hpp"
 
 namespace sicks300_ros2
 {
@@ -95,27 +96,6 @@ public:
   CallbackReturn on_shutdown(const rclcpp_lifecycle::State & state) override;
 
 protected:
-  /**
-   * @brief Declares static ROS2 parameter and sets it to a given value if it was not already declared.
-   *
-   * @param node A node in which given parameter to be declared
-   * @param param_name The name of parameter
-   * @param default_value Parameter value to initialize with
-   * @param parameter_descriptor Parameter descriptor (optional)
-  */
-  template<typename NodeT>
-  void declare_parameter_if_not_declared(
-    NodeT node,
-    const std::string & param_name,
-    const rclcpp::ParameterValue & default_value,
-    const rcl_interfaces::msg::ParameterDescriptor & parameter_descriptor =
-    rcl_interfaces::msg::ParameterDescriptor())
-  {
-    if (!node->has_parameter(param_name)) {
-      node->declare_parameter(param_name, default_value, parameter_descriptor);
-    }
-  }
-
   /**
    * @brief Open the scanner
    *
