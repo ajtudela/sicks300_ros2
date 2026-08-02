@@ -127,22 +127,22 @@ protected:
    * @param iSickNow Current timestamp
    */
   void publishLaserScan(
-    std::vector<double> vdDistM, std::vector<double> vdAngRAD,
-    std::vector<double> vdIntensAU, unsigned int iSickTimeStamp, unsigned int iSickNow);
+    const std::vector<double> & vdDistM, const std::vector<double> & vdAngRAD,
+    const std::vector<double> & vdIntensAU, unsigned int iSickTimeStamp, unsigned int iSickNow);
 
   /**
    * @brief Publish an error message
    *
    * @param error Error message
    */
-  void publishError(std::string error);
+  void publishError(const std::string & error);
 
   /**
    * @brief Publish a warning message
    *
    * @param warn Warning message
    */
-  void publishWarn(std::string warn);
+  void publishWarn(const std::string & warn);
 
   rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_pub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>::SharedPtr in_standby_pub_;
