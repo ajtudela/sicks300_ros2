@@ -27,9 +27,6 @@ namespace sicks300_ros2
 
 SickS300::SickS300(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("sicks300", "", options),
-  synced_time_ready_(false),
-  synced_sick_stamp_(0),
-  synced_ros_time_(this->now()),
   point_time_communication_ok_(this->now())
 {
 }
@@ -251,11 +248,8 @@ bool SickS300::open()
 bool SickS300::receiveScan()
 {
   std::vector<double> ranges, rangeAngles, intensities;
-  unsigned int iSickTimeStamp, iSickNow;
 
-  int result = scanner_.getScan(
-    ranges, rangeAngles, intensities,
-    iSickTimeStamp, iSickNow, debug_);
+  int result = scanner_.getScan(ranges, rangeAngles, intensities, debug_);
 
   if (result) {
     if (scanner_.isInStandby()) {
@@ -266,7 +260,7 @@ bool SickS300::receiveScan()
       publishStandby(true);
     } else {
       publishStandby(false);
-      publishLaserScan(ranges, rangeAngles, intensities, iSickTimeStamp, iSickNow);
+      publishLaserScan(ranges, rangeAngles, intensities);
     }
 
     point_time_communication_ok_ = this->now();
@@ -290,7 +284,7 @@ void SickS300::publishStandby(bool in_standby)
 
 void SickS300::publishLaserScan(
   const std::vector<double> & vdDistM, const std::vector<double> & vdAngRAD,
-  const std::vector<double> & vdIntensAU, unsigned int iSickTimeStamp, unsigned int iSickNow)
+  const std::vector<double> & vdIntensAU)
 {
   if (vdDistM.size() < 2) {
     RCLCPP_WARN(
@@ -304,30 +298,9 @@ void SickS300::publishLaserScan(
   int num_readings = vdDistM.size();       // initialize with max scan size
   int stop_scan = vdDistM.size();
 
-  // Sync handling: find out exact scan time by using the syncTime-syncStamp pair:
-  // Timestamp: "This counter is internally incremented at each scan, i.e. every 40 ms (S300)"
-  if (iSickNow != 0) {
-    synced_ros_time_ = this->now() - rclcpp::Duration::from_seconds(scan_cycle_time_);
-    synced_sick_stamp_ = iSickNow;
-    synced_time_ready_ = true;
-
-    RCLCPP_DEBUG(this->get_logger(), "Got iSickNow, store sync-stamp: %d", synced_sick_stamp_);
-  } else {
-    synced_time_ready_ = false;
-  }
-
   // Create LaserScan message
   sensor_msgs::msg::LaserScan laserScan;
-  if (synced_time_ready_) {
-    double timeDiff = static_cast<int>(iSickTimeStamp - synced_sick_stamp_) * scan_cycle_time_;
-    laserScan.header.stamp = synced_ros_time_ + rclcpp::Duration::from_seconds(timeDiff);
-
-    RCLCPP_DEBUG(
-      this->get_logger(), "Time::now() - calculated sick time stamp = %f",
-      (this->now() - laserScan.header.stamp).seconds());
-  } else {
-    laserScan.header.stamp = this->now();
-  }
+  laserScan.header.stamp = this->now();
 
   // Fill message
   laserScan.header.frame_id = frame_id_;

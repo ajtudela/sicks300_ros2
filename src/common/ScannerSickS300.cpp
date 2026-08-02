@@ -134,14 +134,11 @@ void ScannerSickS300::purgeScanBuf()
 //-----------------------------------------------
 bool ScannerSickS300::getScan(
   std::vector<double> & vdDistanceM, std::vector<double> & vdAngleRAD,
-  std::vector<double> & vdIntensityAU, unsigned int & /*iTimestamp*/,
-  unsigned int & iTimeNow, const bool debug)
+  std::vector<double> & vdIntensityAU, const bool debug)
 {
   bool bRet = false;
   int iNumRead2 = 0;
   std::vector<ScanPolarType> vecScanPolar;
-
-  iTimeNow = 0;
 
   if (SCANNER_S300_READ_BUF_SIZE - 2 - m_actualBufferSize <= 0) {
     m_actualBufferSize = 0;
