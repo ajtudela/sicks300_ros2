@@ -15,6 +15,9 @@
  */
 
 #include <stdint.h>
+#include <algorithm>
+#include <cstring>
+
 #include "sicks300_ros2/common/ScannerSickS300.hpp"
 
 //-----------------------------------------------
@@ -159,11 +162,12 @@ bool ScannerSickS300::getScan(
       if (m_viScanRaw.size() > 0) {
         // Scan was succesfully read from buffer
         bRet = true;
-        int old = m_actualBufferSize;
-        m_actualBufferSize -= tp_.getCompletePacketSize() + i;
-        for (int j = 0; j < old - m_actualBufferSize; j++) {
-          m_ReadBuf[j] = m_ReadBuf[j + old - m_actualBufferSize];
+        const int consumed = tp_.getCompletePacketSize() + i;
+        const int remaining = m_actualBufferSize - consumed;
+        if (remaining > 0) {
+          memmove(m_ReadBuf, m_ReadBuf + consumed, remaining);
         }
+        m_actualBufferSize = std::max(0, remaining);
         break;
       }
     }
