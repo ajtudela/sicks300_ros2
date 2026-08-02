@@ -116,7 +116,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_filtered_pub_;
 
-  float lower_angle_, upper_angle_;
+  double lower_angle_, upper_angle_;
 };
 
 /* Main */
