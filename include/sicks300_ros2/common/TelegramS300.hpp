@@ -194,9 +194,6 @@ class TelegramParser
     std::cout << std::dec << std::endl;
   }
 
-  //-------------------------------------------
-  static unsigned int createCRC(uint8_t * ptrData, int Size);
-
   // Supports versions: 0301, 0201
   static bool check(const TELEGRAM_COMMON1 & tc, const uint8_t DEVICE_ADDR)
   {
@@ -373,6 +370,14 @@ public:
 
     return true;
   }
+
+  /**
+   * @brief Computes the CRC-CCITT checksum used by the S300 protocol over a buffer.
+   *
+   * Exposed publicly (it is a pure, stateless function) so tests can compute the correct
+   * CRC for synthetic telegrams instead of hand-calculating or duplicating it.
+   */
+  static unsigned int createCRC(uint8_t * ptrData, int Size);
 
   bool isDist() const {return tc3_.type.type == DISTANCE;}
   int getField() const

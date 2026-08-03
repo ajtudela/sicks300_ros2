@@ -1,0 +1,13 @@
+find_package(ament_cmake_gtest REQUIRED)
+
+ament_add_gtest(test_telegram_parser test_telegram_parser.cpp)
+target_include_directories(test_telegram_parser PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(test_telegram_parser scanner_serial)
+
+ament_add_gtest(test_scanner_sick_s300 test_scanner_sick_s300.cpp)
+target_include_directories(test_scanner_sick_s300 PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(test_scanner_sick_s300 scanner_serial)
+
+ament_add_gtest(test_scan_filter test_scan_filter.cpp)
+target_include_directories(test_scan_filter PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(test_scan_filter rclcpp::rclcpp ${sensor_msgs_TARGETS})
