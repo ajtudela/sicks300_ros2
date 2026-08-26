@@ -232,7 +232,9 @@ public:
     const unsigned char * buffer, const size_t max_size, const uint8_t DEVICE_ADDR,
     const bool debug)
   {
-    if (sizeof(tc1_) > max_size) {return false;}
+    constexpr size_t minimum_header_size =
+      sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + sizeof(TELEGRAM_COMMON3);
+    if (buffer == nullptr || minimum_header_size > max_size) {return false;}
     tc1_ = *reinterpret_cast<const TELEGRAM_COMMON1 *>(buffer);
 
     if (!check(tc1_, DEVICE_ADDR)) {
@@ -274,6 +276,13 @@ public:
       full_data_size = sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_ +
         sizeof(TELEGRAM_TAIL);
 
+      if (user_data_size_ < static_cast<int>(sizeof(TELEGRAM_COMMON3)) ||
+        full_data_size > static_cast<int>(max_size))
+      {
+        if (debug) {std::cout << "invalid header size" << std::endl;}
+        return false;
+      }
+
       tt =
         *(reinterpret_cast<const TELEGRAM_TAIL *>(buffer +
         (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_)) );
@@ -296,6 +305,13 @@ public:
         crc_bytes_in_size_);
       full_data_size = sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_ +
         sizeof(TELEGRAM_TAIL);
+
+      if (user_data_size_ < static_cast<int>(sizeof(TELEGRAM_COMMON3)) ||
+        full_data_size > static_cast<int>(max_size))
+      {
+        if (debug) {std::cout << "invalid header size" << std::endl;}
+        return false;
+      }
 
       tt =
         *(reinterpret_cast<const TELEGRAM_TAIL *>(buffer +
@@ -320,6 +336,13 @@ public:
           sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_ +
           sizeof(TELEGRAM_TAIL);
 
+        if (user_data_size_ < static_cast<int>(sizeof(TELEGRAM_COMMON3)) ||
+          full_data_size > static_cast<int>(max_size))
+        {
+          if (debug) {std::cout << "invalid header size" << std::endl;}
+          return false;
+        }
+
         tt =
           *(reinterpret_cast<const TELEGRAM_TAIL *>(buffer +
           (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_)) );
@@ -330,14 +353,6 @@ public:
           full_data_size - JUNK_SIZE - sizeof(TELEGRAM_TAIL));
       }
     }
-
-    if ( (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_ +
-      sizeof(TELEGRAM_TAIL)) > static_cast<size_t>(max_size))
-    {
-      if (debug) {std::cout << "invalid header size" << std::endl;}
-      return false;
-    }
-
 
     if (tt.crc_struct.crc != crc) {
       if (debug) {
@@ -358,6 +373,13 @@ public:
 
       case DISTANCE:
         if (debug) {std::cout << "got distance" << std::endl;}
+
+        if (user_data_size_ <
+          static_cast<int>(sizeof(TELEGRAM_COMMON3) + sizeof(TELEGRAM_DISTANCE)))
+        {
+          if (debug) {std::cout << "distance telegram is missing its field" << std::endl;}
+          return false;
+        }
 
         td_ =
           *(reinterpret_cast<const TELEGRAM_DISTANCE *>(buffer + sizeof(TELEGRAM_COMMON1) +
