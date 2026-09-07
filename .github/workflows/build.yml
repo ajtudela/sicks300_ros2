@@ -6,7 +6,7 @@ name: Build
 on:
   push:
     branches:
-      - main
+      - rolling
   pull_request:
   workflow_dispatch:
 
