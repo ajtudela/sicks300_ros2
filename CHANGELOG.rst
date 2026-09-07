@@ -2,6 +2,25 @@
 Changelog for package sicks300_ros2
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.4.0 (07-09-2026)
+------------------
+* Add a unit test suite for the parser, scanner and scan filter.
+* Move serial acquisition to a dedicated thread behind an injectable ``ISerialIO`` transport interface.
+* Give the serial read a real wall-clock timeout and make the communication timeout report an error.
+* Consolidate diagnostics behind ``diagnostic_updater``.
+* Guard against degenerate scans and keep ``angle_min``/``angle_max``, ``angle_increment`` and ``scan_time`` consistent.
+* Fix the receive buffer compaction in ``getScan``.
+* Replace unaligned ``reinterpret_cast`` reads in the parser with ``memcpy``.
+* Remove static state shared between scanner instances.
+* Remove the inert scan timestamp synchronization, dead members, stubs and commented-out code.
+* Extract ``declare_parameter_if_not_declared`` to a shared header.
+* Rename Hungarian-notation identifiers to ``snake_case`` and name magic numbers.
+* Pass vectors and strings by const reference.
+* Deprecate the ``scan_filter`` node in favor of the ``laser_filters`` package and remove the old laser filter.
+* Declare ``lower_angle_``/``upper_angle_`` as ``double`` in ``scan_filter``.
+* Rename package to ``sicks300_ros2`` and update publisher QoS.
+* Update the CI workflow.
+
 1.3.3 (06-02-2025)
 ------------------
 * First jazzy release.
