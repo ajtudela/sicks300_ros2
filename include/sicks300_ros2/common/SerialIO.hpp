@@ -23,89 +23,35 @@
 
 #include <string>
 
+#include "sicks300_ros2/common/ISerialIO.hpp"
+
 /**
- * Wrapper class for serial communication.
+ * Wrapper class for serial communication, implementing the ISerialIO transport interface.
  */
-class SerialIO
+class SerialIO : public ISerialIO
 {
 public:
-  // ---------------------- Constants
-  /// Constants for defining the handshake.
-  enum HandshakeFlags
-  {
-    HS_NONE,
-    HS_HARDWARE,
-    HS_XONXOFF
-  };
-
-  /// Constants for defining the parity bits.
-  enum ParityFlags
-  {
-    PA_NONE,
-    PA_EVEN,
-    PA_ODD,
-// UNIX serial drivers only support even, odd, and no parity bit generation.
-    PA_MARK,
-    PA_SPACE
-  };
-
-  /// Constants for defining the stop bits.
-  enum StopBits
-  {
-    SB_ONE,
-    SB_ONE_5,             // ????? returns an error ?????
-    SB_TWO
-  };
-
   /// Default constructor
   SerialIO();
 
   /// Destructor
-  virtual ~SerialIO();
+  ~SerialIO() override;
 
-  /**
-   * Sets the device name
-   * @param Name 'COM1', 'COM2', ...
-   */
-  void setDeviceName(const char * Name) {m_DeviceName = Name;}
+  void setDeviceName(const char * Name) override {m_DeviceName = Name;}
 
-  /**
-   * Sets the baudrate.
-   * @param BaudRate baudrate.
-   */
-  void setBaudRate(int BaudRate) {m_BaudRate = BaudRate;}
+  void setBaudRate(int BaudRate) override {m_BaudRate = BaudRate;}
 
-  /**
-   * Sets a multiplier for the baudrate.
-   * Some serial cards need a specific multiplier for the baudrate.
-   * @param Multiplier default is one.
-   */
-  void setMultiplier(double Multiplier = 1) {m_Multiplier = Multiplier;}
+  void setMultiplier(double Multiplier = 1) override {m_Multiplier = Multiplier;}
 
-  /**
-   * Sets the message format.
-   */
-  void SetFormat(int ByteSize, ParityFlags Parity, int stopBits)
+  void SetFormat(int ByteSize, ParityFlags Parity, int stopBits) override
   {m_ByteSize = ByteSize; m_Parity = Parity; m_StopBits = stopBits;}
 
-  /**
-   * Defines the handshake type.
-   */
-  void setHandshake(HandshakeFlags Handshake) {m_Handshake = Handshake;}
+  void setHandshake(HandshakeFlags Handshake) override {m_Handshake = Handshake;}
 
-  /**
-   * Sets the buffer sizes.
-   * @param ReadBufSize number of bytes of the read buffer.
-   * @param WriteBufSize number of bytes of the write buffer.
-   */
-  void setBufferSize(int ReadBufSize, int WriteBufSize)
+  void setBufferSize(int ReadBufSize, int WriteBufSize) override
   {m_ReadBufSize = ReadBufSize; m_WriteBufSize = WriteBufSize;}
 
-  /**
-   * Sets the timeout.
-   * @param Timeout in seconds
-   */
-  void setTimeout(double Timeout);
+  void setTimeout(double Timeout) override;
 
   /**
    * Sets the byte period for transmitting bytes.
@@ -115,26 +61,11 @@ public:
    */
   void setBytePeriod(double Period);
 
-  /**
-   * Opens serial port.
-   * The port has to be configured before.
-   */
-  int openIO();
+  int openIO() override;
 
-  /**
-   * Closes the serial port.
-   */
-  void closeIO();
+  void closeIO() override;
 
-  /**
-   * Reads the serial port blocking.
-   * The function blocks until the requested number of bytes have been
-   * read or the timeout occurs.
-   * @param Buffer pointer to the buffer.
-   * @param Length number of bytes to read
-   */
-  int readBlocking(char * Buffer, int Length);
-
+  int readBlocking(char * Buffer, int Length) override;
 
   /**
    * Reads the serial port non blocking.
@@ -157,9 +88,7 @@ public:
   int getSizeRXQueue();
 
 
-  /** Clears the read and transmit buffer.
-   */
-  void purge()
+  void purge() override
   {
     ::tcflush(m_Device, TCIOFLUSH);
   }

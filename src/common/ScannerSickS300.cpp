@@ -15,14 +15,26 @@
  */
 
 #include <stdint.h>
+#include <algorithm>
+#include <cstring>
+
 #include "sicks300_ros2/common/ScannerSickS300.hpp"
 
 //-----------------------------------------------
 
+namespace
+{
+// Read timeout for the serial port: bounds how long readBlocking() can block for when the
+// scanner stops sending data at all, so the caller (see SickS300::receiveScan) can detect a
+// communication timeout instead of hanging forever. It is intentionally independent from the
+// user-configurable `communication_timeout` ROS parameter, which governs how long the caller
+// tolerates *consecutive* read timeouts before reporting an error, not a single read() call.
+constexpr double kReadTimeoutSec = 0.5;
+}  // namespace
+
 typedef unsigned char BYTE;
 
 const double ScannerSickS300::c_dPi = 3.14159265358979323846;
-unsigned char ScannerSickS300::m_iScanId = 7;
 
 const uint16_t crc_LookUpTable[256] =
 {
@@ -74,29 +86,30 @@ unsigned int TelegramParser::createCRC(uint8_t * ptrData, int Size)
 }
 
 //-----------------------------------------------
-ScannerSickS300::ScannerSickS300()
+ScannerSickS300::ScannerSickS300(std::unique_ptr<ISerialIO> serial_io)
+: m_SerialIO(std::move(serial_io))
 {
   // allows to set different Baud-Multipliers depending on used SerialIO-Card
   m_dBaudMult = 1.0;
 
-  // init scan with zeros
-  m_iPosReadBuf2 = 0;
-
   m_actualBufferSize = 0;
 
   m_bInStandby = true;
+
+  // default scanner id, overwritten by open()
+  m_iScanId = 7;
 }
 
 
 //-------------------------------------------
 ScannerSickS300::~ScannerSickS300()
 {
-  m_SerialIO.closeIO();
+  m_SerialIO->closeIO();
 }
 
 
 // ---------------------------------------------------------------------------
-bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId = 7)
+bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId)
 {
   int bRetSerial;
 
@@ -104,19 +117,18 @@ bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId = 7)
   m_iScanId = iScanId;
 
   // initialize Serial Interface
-  m_SerialIO.setBaudRate(iBaudRate);
-  m_SerialIO.setDeviceName(pcPort);
-  m_SerialIO.setBufferSize(READ_BUF_SIZE - 10, WRITE_BUF_SIZE - 10);
-  m_SerialIO.setHandshake(SerialIO::HS_NONE);
-  m_SerialIO.setMultiplier(m_dBaudMult);
-  bRetSerial = m_SerialIO.openIO();
-  m_SerialIO.setTimeout(0.0);
-  m_SerialIO.SetFormat(8, SerialIO::PA_NONE, SerialIO::SB_ONE);
+  m_SerialIO->setBaudRate(iBaudRate);
+  m_SerialIO->setDeviceName(pcPort);
+  m_SerialIO->setBufferSize(READ_BUF_SIZE - 10, WRITE_BUF_SIZE - 10);
+  m_SerialIO->setHandshake(ISerialIO::HS_NONE);
+  m_SerialIO->setMultiplier(m_dBaudMult);
+  bRetSerial = m_SerialIO->openIO();
+  m_SerialIO->setTimeout(kReadTimeoutSec);
+  m_SerialIO->SetFormat(8, ISerialIO::PA_NONE, ISerialIO::SB_ONE);
 
   if (bRetSerial == 0) {
     // Clears the read and transmit buffer.
-    m_iPosReadBuf2 = 0;
-    m_SerialIO.purge();
+    m_SerialIO->purge();
     return true;
   } else {
     return false;
@@ -127,45 +139,23 @@ bool ScannerSickS300::open(const char * pcPort, int iBaudRate, int iScanId = 7)
 //-------------------------------------------
 void ScannerSickS300::purgeScanBuf()
 {
-  m_iPosReadBuf2 = 0;
-  m_SerialIO.purge();
-}
-
-
-//-------------------------------------------
-void ScannerSickS300::resetStartup()
-{
-}
-
-
-//-------------------------------------------
-void ScannerSickS300::startScanner()
-{
-}
-
-
-//-------------------------------------------
-void ScannerSickS300::stopScanner()
-{
+  m_SerialIO->purge();
 }
 
 //-----------------------------------------------
 bool ScannerSickS300::getScan(
   std::vector<double> & vdDistanceM, std::vector<double> & vdAngleRAD,
-  std::vector<double> & vdIntensityAU, unsigned int & /*iTimestamp*/,
-  unsigned int & iTimeNow, const bool debug)
+  std::vector<double> & vdIntensityAU, const bool debug)
 {
   bool bRet = false;
   int iNumRead2 = 0;
   std::vector<ScanPolarType> vecScanPolar;
 
-  iTimeNow = 0;
-
   if (SCANNER_S300_READ_BUF_SIZE - 2 - m_actualBufferSize <= 0) {
     m_actualBufferSize = 0;
   }
 
-  iNumRead2 = m_SerialIO.readBlocking(
+  iNumRead2 = m_SerialIO->readBlocking(
     reinterpret_cast<char *>(m_ReadBuf) + m_actualBufferSize,
     SCANNER_S300_READ_BUF_SIZE - 2 - m_actualBufferSize);
   if (iNumRead2 <= 0) {return false;}
@@ -180,11 +170,12 @@ bool ScannerSickS300::getScan(
       if (m_viScanRaw.size() > 0) {
         // Scan was succesfully read from buffer
         bRet = true;
-        int old = m_actualBufferSize;
-        m_actualBufferSize -= tp_.getCompletePacketSize() + i;
-        for (int j = 0; j < old - m_actualBufferSize; j++) {
-          m_ReadBuf[j] = m_ReadBuf[j + old - m_actualBufferSize];
+        const int consumed = tp_.getCompletePacketSize() + i;
+        const int remaining = m_actualBufferSize - consumed;
+        if (remaining > 0) {
+          memmove(m_ReadBuf, m_ReadBuf + consumed, remaining);
         }
+        m_actualBufferSize = std::max(0, remaining);
         break;
       }
     }
@@ -221,9 +212,10 @@ void ScannerSickS300::convertScanToPolar(
   bool bInStandby = true;
 
   vecScanPolar.resize(viScanRaw.size());
-  dAngleStep = fabs(param->second.dStopAngle - param->second.dStartAngle) /
-    static_cast<double>(viScanRaw.size() - 1);
-
+  dAngleStep = viScanRaw.size() > 1 ?
+    fabs(param->second.dStopAngle - param->second.dStartAngle) /
+    static_cast<double>(viScanRaw.size() - 1) :
+    0.0;
 
   for (size_t i = 0; i < viScanRaw.size(); i++) {
     dDist = static_cast<double>((viScanRaw[i] & 0x1FFF) * param->second.dScale);

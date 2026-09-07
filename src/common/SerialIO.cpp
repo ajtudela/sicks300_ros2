@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-// #include "stdafx.h"
-
 #include <math.h>
 #include <unistd.h>
 #include <errno.h>
@@ -24,20 +22,14 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/serial.h>
-#include <iostream>
 
+#include "rcutils/logging_macros.h"
 #include "sicks300_ros2/common/SerialIO.hpp"
 
-// #define _PRINT_BYTES
-
-/*
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
-*/
-
+namespace
+{
+constexpr const char * kLoggerName = "sicks300_ros2.serial_io";
+}  // namespace
 
 bool getBaudrateCode(int iBaudrate, int * iBaudrateCode)
 {
@@ -67,34 +59,8 @@ bool getBaudrateCode(int iBaudrate, int * iBaudrateCode)
       break;
     }
   }
-  /*
-  int iStart = 0;
-  int iEnd = iBaudsLen;
-  int iPos = (iStart + iEnd) / 2;
-  while (  iPos + 1 < iBaudsLen
-         && (iBaudrate < baudTable[iPos] || iBaudrate >= baudTable[iPos + 1])
-         && iPos != 0)
-  {
-        if (iBaudrate < baudTable[iPos])
-        {
-                iEnd = iPos;
-        }
-        else
-        {
-                iStart = iPos;
-        }
-        iPos = (iStart + iEnd) / 2;
-  }
-
-  return baudCodes[iPos];
-  */
   return ret;
 }
-
-
-//////////////////////////////////////////////////////////////////////
-// Konstruktion/Destruktion
-//////////////////////////////////////////////////////////////////////
 
 SerialIO::SerialIO()
 : m_DeviceName(""),
@@ -127,9 +93,9 @@ int SerialIO::openIO()
   m_Device = open(m_DeviceName.c_str(), O_RDWR | O_NOCTTY /*| O_NONBLOCK*/);
 
   if (m_Device < 0) {
-    // RF_ERR("Open " << m_DeviceName << " failed, error code " << errno);
-    std::cout << "Trying to open " << m_DeviceName << " failed: "
-              << strerror(errno) << " (Error code " << errno << ")" << std::endl;
+    RCUTILS_LOG_ERROR_NAMED(
+      kLoggerName, "Trying to open %s failed: %s (Error code %d)",
+      m_DeviceName.c_str(), strerror(errno), errno);
 
     return -1;
   }
@@ -137,8 +103,9 @@ int SerialIO::openIO()
   // set parameters
   Res = tcgetattr(m_Device, &m_tio);
   if (Res == -1) {
-    std::cout << "tcgetattr of " << m_DeviceName << " failed: "
-              << strerror(errno) << " (Error code " << errno << ")" << std::endl;
+    RCUTILS_LOG_ERROR_NAMED(
+      kLoggerName, "tcgetattr of %s failed: %s (Error code %d)",
+      m_DeviceName.c_str(), strerror(errno), errno);
 
     close(m_Device);
     m_Device = -1;
@@ -175,7 +142,7 @@ int SerialIO::openIO()
 
   // set baud rate
   int iNewBaudrate = static_cast<int>(m_BaudRate * m_Multiplier + 0.5);
-  std::cout << "Setting Baudrate to " << iNewBaudrate << std::endl;
+  RCUTILS_LOG_INFO_NAMED(kLoggerName, "Setting Baudrate to %d", iNewBaudrate);
 
   int iBaudrateCode = 0;
   bool bBaudrateValid = getBaudrateCode(iNewBaudrate, &iBaudrateCode);
@@ -184,7 +151,8 @@ int SerialIO::openIO()
   cfsetospeed(&m_tio, iBaudrateCode);
 
   if (!bBaudrateValid) {
-    std::cout << "Baudrate code not available - setting baudrate directly" << std::endl;
+    RCUTILS_LOG_WARN_NAMED(
+      kLoggerName, "Baudrate code not available - setting baudrate directly");
     struct serial_struct ss;
     ioctl(m_Device, TIOCGSERIAL, &ss);
     ss.flags |= ASYNC_SPD_CUST;
@@ -260,8 +228,9 @@ int SerialIO::openIO()
   Res = tcsetattr(m_Device, TCSANOW, &m_tio);
 
   if (Res == -1) {
-    std::cout << "tcsetattr " << m_DeviceName << " failed: "
-              << strerror(errno) << " (Error code " << errno << ")" << std::endl;
+    RCUTILS_LOG_ERROR_NAMED(
+      kLoggerName, "tcsetattr %s failed: %s (Error code %d)",
+      m_DeviceName.c_str(), strerror(errno), errno);
 
     close(m_Device);
     m_Device = -1;
@@ -290,7 +259,19 @@ void SerialIO::setTimeout(double Timeout)
 {
   m_Timeout = Timeout;
   if (m_Device != -1) {
-    m_tio.c_cc[VTIME] = cc_t(ceil(m_Timeout * 10.0));
+    if (Timeout > 0.0) {
+      // VMIN=0, VTIME>0: read() waits up to Timeout seconds for at least one byte and
+      // returns 0 if none arrive. This is the only VMIN/VTIME combination that yields a
+      // true wall-clock read timeout: with VMIN>0, the VTIME inter-byte timer only starts
+      // once the first byte has been received, so read() would still block forever if the
+      // peer never sends anything at all.
+      m_tio.c_cc[VMIN] = 0;
+      m_tio.c_cc[VTIME] = cc_t(ceil(m_Timeout * 10.0));
+    } else {
+      // VMIN=1, VTIME=0: fully blocking read until at least one byte arrives.
+      m_tio.c_cc[VMIN] = 1;
+      m_tio.c_cc[VTIME] = 0;
+    }
     tcsetattr(m_Device, TCSANOW, &m_tio);
   }
 }
@@ -325,14 +306,6 @@ int SerialIO::readNonBlocking(char * Buffer, int Length)
   ssize_t BytesRead;
 
   BytesRead = read(m_Device, Buffer, iBytesToRead);
-
-  // Debug
-  // printf("%2d Bytes read:", BytesRead);
-  // for (int i = 0; i < BytesRead; i++) {
-  //   unsigned char uc = (unsigned char)Buffer[i];
-  //   printf(" %u", (unsigned int) uc);
-  // }
-  // printf("\n");
 
   return BytesRead;
 }

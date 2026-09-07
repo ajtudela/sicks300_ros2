@@ -51,9 +51,11 @@ endif()
 ## Find ament macros and libraries
 find_package(ament_cmake REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(diagnostic_updater REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(rcutils REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 ###########
@@ -71,6 +73,10 @@ target_include_directories(scanner_serial PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
 )
+target_link_libraries(scanner_serial
+  PRIVATE
+  rcutils::rcutils
+)
 
 # Main library
 add_library(${library_name} SHARED
@@ -83,6 +89,7 @@ target_include_directories(${library_name} PUBLIC
 target_link_libraries(${library_name}
   PUBLIC
   ${diagnostic_msgs_TARGETS}
+  diagnostic_updater::diagnostic_updater
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
   ${sensor_msgs_TARGETS}
@@ -106,6 +113,10 @@ rclcpp_components_register_nodes(${library_name} "sicks300_ros2::SickS300")
 # Scan filter executable
 add_executable(scan_filter
   src/scan_filter.cpp
+)
+target_include_directories(scan_filter PRIVATE
+  "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+  "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
 )
 target_link_libraries(scan_filter
   PRIVATE
@@ -148,13 +159,14 @@ if(BUILD_TESTING)
   # the following line skips the linter which checks for copyrights
   set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
-  # add_subdirectory(test)
+  add_subdirectory(test)
 endif()
 
 ament_export_include_directories(include/${PROJECT_NAME})
 ament_export_libraries(${library_name} scanner_serial)
 ament_export_dependencies(
   diagnostic_msgs
+  diagnostic_updater
   rclcpp
   rclcpp_components
   rclcpp_lifecycle

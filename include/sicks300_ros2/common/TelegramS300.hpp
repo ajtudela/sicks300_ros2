@@ -17,6 +17,7 @@
 #pragma once
 
 #include <arpa/inet.h>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -193,9 +194,6 @@ class TelegramParser
     std::cout << std::dec << std::endl;
   }
 
-  //-------------------------------------------
-  static unsigned int createCRC(uint8_t * ptrData, int Size);
-
   // Supports versions: 0301, 0201
   static bool check(const TELEGRAM_COMMON1 & tc, const uint8_t DEVICE_ADDR)
   {
@@ -233,7 +231,7 @@ public:
     const bool debug)
   {
     if (sizeof(tc1_) > max_size) {return false;}
-    tc1_ = *reinterpret_cast<const TELEGRAM_COMMON1 *>(buffer);
+    memcpy(&tc1_, buffer, sizeof(tc1_));
 
     if (!check(tc1_, DEVICE_ADDR)) {
       // if(debug) std::cout<<"basic check failed"<<std::endl;
@@ -243,10 +241,10 @@ public:
     ntoh(tc1_);
     if (debug) {print(tc1_);}
 
-    tc2_ = *(reinterpret_cast<const TELEGRAM_COMMON2 *>(buffer + sizeof(TELEGRAM_COMMON1)));
-    tc3_ =
-      *(reinterpret_cast<const TELEGRAM_COMMON3 *>(buffer +
-      (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2))));
+    memcpy(&tc2_, buffer + sizeof(TELEGRAM_COMMON1), sizeof(tc2_));
+    memcpy(
+      &tc3_, buffer + (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2)),
+      sizeof(tc3_));
 
     TELEGRAM_TAIL tt;
     uint16_t crc;
@@ -274,9 +272,9 @@ public:
       full_data_size = sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_ +
         sizeof(TELEGRAM_TAIL);
 
-      tt =
-        *(reinterpret_cast<const TELEGRAM_TAIL *>(buffer +
-        (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_)) );
+      memcpy(
+        &tt, buffer + (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_),
+        sizeof(tt));
       ntoh(tt);
       crc =
         createCRC(
@@ -297,9 +295,9 @@ public:
       full_data_size = sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_ +
         sizeof(TELEGRAM_TAIL);
 
-      tt =
-        *(reinterpret_cast<const TELEGRAM_TAIL *>(buffer +
-        (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_)) );
+      memcpy(
+        &tt, buffer + (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_),
+        sizeof(tt));
       ntoh(tt);
       crc =
         createCRC(
@@ -320,9 +318,9 @@ public:
           sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_ +
           sizeof(TELEGRAM_TAIL);
 
-        tt =
-          *(reinterpret_cast<const TELEGRAM_TAIL *>(buffer +
-          (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_)) );
+        memcpy(
+          &tt, buffer + (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) + user_data_size_),
+          sizeof(tt));
         ntoh(tt);
         crc =
           createCRC(
@@ -359,9 +357,9 @@ public:
       case DISTANCE:
         if (debug) {std::cout << "got distance" << std::endl;}
 
-        td_ =
-          *(reinterpret_cast<const TELEGRAM_DISTANCE *>(buffer + sizeof(TELEGRAM_COMMON1) +
-          sizeof(TELEGRAM_COMMON2) + sizeof(TELEGRAM_COMMON3)));
+        memcpy(
+          &td_, buffer + sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) +
+          sizeof(TELEGRAM_COMMON3), sizeof(td_));
         ntoh(td_);
         // print(td_);
         break;
@@ -372,6 +370,14 @@ public:
 
     return true;
   }
+
+  /**
+   * @brief Computes the CRC-CCITT checksum used by the S300 protocol over a buffer.
+   *
+   * Exposed publicly (it is a pure, stateless function) so tests can compute the correct
+   * CRC for synthetic telegrams instead of hand-calculating or duplicating it.
+   */
+  static unsigned int createCRC(uint8_t * ptrData, int Size);
 
   bool isDist() const {return tc3_.type.type == DISTANCE;}
   int getField() const
@@ -402,11 +408,12 @@ public:
       sizeof(TELEGRAM_S300_DIST_2B);
     if (debug) {std::cout << "Number of points: " << std::dec << num_points << std::endl;}
     for (size_t i = 0; i < num_points; ++i) {
-      TELEGRAM_S300_DIST_2B dist =
-        *(reinterpret_cast<const TELEGRAM_S300_DIST_2B *>(buffer +
+      TELEGRAM_S300_DIST_2B dist;
+      memcpy(
+        &dist, buffer +
         (sizeof(TELEGRAM_COMMON1) + sizeof(TELEGRAM_COMMON2) +
         sizeof(TELEGRAM_COMMON3) + sizeof(TELEGRAM_DISTANCE) +
-        i * sizeof(TELEGRAM_S300_DIST_2B))) );
+        i * sizeof(TELEGRAM_S300_DIST_2B)), sizeof(dist));
       // for distance only: res.push_back((int)dist.distance);
       res.push_back(static_cast<int>(dist.val16));
     }

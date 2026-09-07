@@ -25,16 +25,33 @@ using namespace std::chrono_literals;
 namespace sicks300_ros2
 {
 
+namespace
+{
+// Though the specs state otherwise, the minimum/maximum range reported by the scanner
+// is 0.001m / 29.96m.
+constexpr double kRangeMin = 0.001;
+constexpr double kRangeMax = 29.5;
+// Time to wait for the scanner to start streaming data after opening the serial port.
+constexpr auto kScannerStartupDelay = std::chrono::milliseconds(1000);
+// Minimum period between consecutive "scanner in standby" warnings.
+constexpr auto kStandbyWarnThrottlePeriod = std::chrono::milliseconds(30);
+// Minimum period between consecutive "communication timeout" error logs.
+constexpr auto kCommunicationTimeoutThrottlePeriod = std::chrono::milliseconds(1000);
+}  // namespace
+
 SickS300::SickS300(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("sicks300", "", options),
-  synced_time_ready_(false),
-  synced_sick_stamp_(0),
-  synced_ros_time_(this->now())
+  point_time_communication_ok_(this->now())
 {
 }
 
 SickS300::~SickS300()
 {
+  acquisition_running_ = false;
+  if (acquisition_thread_.joinable()) {
+    acquisition_thread_.join();
+  }
+
   if (timer_) {
     timer_->cancel();
     timer_.reset();
@@ -127,7 +144,8 @@ CallbackReturn SickS300::on_configure(const rclcpp_lifecycle::State &)
   declare_parameter_if_not_declared(
     this, "communication_timeout", rclcpp::ParameterValue(0.2),
     rcl_interfaces::msg::ParameterDescriptor()
-    .set__description("Timeout to shutdown the node"));
+    .set__description(
+      "Time without a valid scan before reporting a communication error diagnostic"));
   this->get_parameter("communication_timeout", communication_timeout_);
   RCLCPP_INFO(
     this->get_logger(),
@@ -166,22 +184,27 @@ CallbackReturn SickS300::on_configure(const rclcpp_lifecycle::State &)
   // Configure the publishers
   auto latched_profile = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
   laser_scan_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(
-    scan_topic_, rclcpp::SensorDataQoS());
+    scan_topic_, rclcpp::SystemDefaultsQoS());
   in_standby_pub_ = this->create_publisher<std_msgs::msg::Bool>(
     scan_topic_ + "/standby", latched_profile);
-  diag_pub_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-    "/diagnostics", rclcpp::QoS(1));
+
+  // Configure diagnostics: a single task reporting the latest status set by receiveScan(),
+  // published on its own (~1Hz by default) schedule instead of once per scan cycle.
+  scanner_status_ = ScannerStatus::kOk;
+  diagnostic_updater_ = std::make_unique<diagnostic_updater::Updater>(this);
+  diagnostic_updater_->setHardwareID(port_);
+  diagnostic_updater_->add("Sick S300 scanner", this, &SickS300::produceDiagnostics);
 
   // Open the laser scanner
-  bool bOpenScan = this->open();
-  if (!bOpenScan) {
+  bool scanner_opened = this->open();
+  if (!scanner_opened) {
     RCLCPP_ERROR(
       this->get_logger(),
       "...scanner not available on port %s. Please, try again.", port_.c_str());
     return CallbackReturn::FAILURE;
   } else {
     // Wait for scan to get ready if successful
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::this_thread::sleep_for(kScannerStartupDelay);
     RCLCPP_INFO(
       this->get_logger(),
       "...scanner opened successfully on port %s", port_.c_str());
@@ -194,6 +217,12 @@ CallbackReturn SickS300::on_activate(const rclcpp_lifecycle::State & state)
 {
   LifecycleNode::on_activate(state);
   RCLCPP_INFO(this->get_logger(), "Activating the node...");
+
+  point_time_communication_ok_ = this->now();
+  pending_scan_ = PendingScan();
+
+  acquisition_running_ = true;
+  acquisition_thread_ = std::thread(&SickS300::acquisitionLoop, this);
 
   timer_ = this->create_wall_timer(
     std::chrono::duration<double>(scan_cycle_time_),
@@ -212,6 +241,11 @@ CallbackReturn SickS300::on_deactivate(const rclcpp_lifecycle::State & state)
     timer_.reset();
   }
 
+  acquisition_running_ = false;
+  if (acquisition_thread_.joinable()) {
+    acquisition_thread_.join();
+  }
+
   return CallbackReturn::SUCCESS;
 }
 
@@ -222,7 +256,7 @@ CallbackReturn SickS300::on_cleanup(const rclcpp_lifecycle::State &)
   // Release the shared pointers
   laser_scan_pub_.reset();
   in_standby_pub_.reset();
-  diag_pub_.reset();
+  diagnostic_updater_.reset();
   timer_.reset();
 
   return CallbackReturn::SUCCESS;
@@ -235,7 +269,7 @@ CallbackReturn SickS300::on_shutdown(const rclcpp_lifecycle::State & state)
   // Release the shared pointers
   laser_scan_pub_.reset();
   in_standby_pub_.reset();
-  diag_pub_.reset();
+  diagnostic_updater_.reset();
   timer_.reset();
 
   return CallbackReturn::SUCCESS;
@@ -246,39 +280,62 @@ bool SickS300::open()
   return scanner_.open(port_.c_str(), baud_, scan_id_);
 }
 
-bool SickS300::receiveScan()
+void SickS300::receiveScan()
 {
-  std::vector<double> ranges, rangeAngles, intensities;
-  unsigned int iSickTimeStamp, iSickNow;
+  PendingScan scan;
+  rclcpp::Time last_ok;
+  {
+    std::lock_guard<std::mutex> lock(scan_mutex_);
+    if (pending_scan_.valid) {
+      scan = std::move(pending_scan_);
+      pending_scan_ = PendingScan();
+    }
+    last_ok = point_time_communication_ok_;
+  }
 
-  int result = scanner_.getScan(
-    ranges, rangeAngles, intensities,
-    iSickTimeStamp, iSickNow, debug_);
-  static rclcpp::Time pointTimeCommunicationOK(this->now());
-
-  if (result) {
-    if (scanner_.isInStandby()) {
-      publishWarn("scanner in standby");
+  if (scan.valid) {
+    if (scan.in_standby) {
+      scanner_status_ = ScannerStatus::kStandby;
       RCLCPP_WARN_THROTTLE(
         this->get_logger(),
-        *this->get_clock(), 30, "scanner on port %s in standby", port_.c_str());
+        *this->get_clock(), kStandbyWarnThrottlePeriod.count(),
+        "scanner on port %s in standby", port_.c_str());
       publishStandby(true);
     } else {
+      scanner_status_ = ScannerStatus::kOk;
       publishStandby(false);
-      publishLaserScan(ranges, rangeAngles, intensities, iSickTimeStamp, iSickNow);
-    }
-
-    pointTimeCommunicationOK = this->now();
-  } else {
-    rclcpp::Duration diff(this->now() - pointTimeCommunicationOK);
-
-    if (diff.seconds() > communication_timeout_) {
-      RCLCPP_WARN(this->get_logger(), "Communication timeout");
-      return false;
+      publishLaserScan(scan.ranges, scan.angles, scan.intensities);
     }
   }
 
-  return true;
+  rclcpp::Duration diff(this->now() - last_ok);
+  if (diff.seconds() > communication_timeout_) {
+    scanner_status_ = ScannerStatus::kCommunicationError;
+    scanner_status_message_ = "communication timeout";
+    RCLCPP_ERROR_THROTTLE(
+      this->get_logger(),
+      *this->get_clock(), kCommunicationTimeoutThrottlePeriod.count(),
+      "Communication timeout on port %s (%.3fs since last valid scan)",
+      port_.c_str(), diff.seconds());
+  }
+}
+
+void SickS300::acquisitionLoop()
+{
+  while (acquisition_running_.load(std::memory_order_relaxed)) {
+    std::vector<double> ranges, angles, intensities;
+    bool result = scanner_.getScan(ranges, angles, intensities, debug_);
+
+    if (result) {
+      std::lock_guard<std::mutex> lock(scan_mutex_);
+      pending_scan_.valid = true;
+      pending_scan_.in_standby = scanner_.isInStandby();
+      pending_scan_.ranges = std::move(ranges);
+      pending_scan_.angles = std::move(angles);
+      pending_scan_.intensities = std::move(intensities);
+      point_time_communication_ok_ = this->now();
+    }
+  }
 }
 
 void SickS300::publishStandby(bool in_standby)
@@ -288,112 +345,82 @@ void SickS300::publishStandby(bool in_standby)
 }
 
 void SickS300::publishLaserScan(
-  std::vector<double> vdDistM, std::vector<double> vdAngRAD,
-  std::vector<double> vdIntensAU, unsigned int iSickTimeStamp, unsigned int iSickNow)
+  const std::vector<double> & ranges_m, const std::vector<double> & angles_rad,
+  const std::vector<double> & intensities_au)
 {
-  // Fill message
-  int start_scan = 0;
-  int num_readings = vdDistM.size();       // initialize with max scan size
-  int stop_scan = vdDistM.size();
-
-  // Sync handling: find out exact scan time by using the syncTime-syncStamp pair:
-  // Timestamp: "This counter is internally incremented at each scan, i.e. every 40 ms (S300)"
-  if (iSickNow != 0) {
-    synced_ros_time_ = this->now() - rclcpp::Duration::from_seconds(scan_cycle_time_);
-    synced_sick_stamp_ = iSickNow;
-    synced_time_ready_ = true;
-
-    RCLCPP_DEBUG(this->get_logger(), "Got iSickNow, store sync-stamp: %d", synced_sick_stamp_);
-  } else {
-    synced_time_ready_ = false;
+  if (ranges_m.size() < 2) {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Discarding a scan with less than 2 points (got %zu)", ranges_m.size());
+    return;
   }
+
+  const int num_points = static_cast<int>(ranges_m.size());
 
   // Create LaserScan message
-  sensor_msgs::msg::LaserScan laserScan;
-  if (synced_time_ready_) {
-    double timeDiff = static_cast<int>(iSickTimeStamp - synced_sick_stamp_) * scan_cycle_time_;
-    laserScan.header.stamp = synced_ros_time_ + rclcpp::Duration::from_seconds(timeDiff);
-
-    RCLCPP_DEBUG(
-      this->get_logger(), "Time::now() - calculated sick time stamp = %f",
-      (this->now() - laserScan.header.stamp).seconds());
-  } else {
-    laserScan.header.stamp = this->now();
-  }
+  sensor_msgs::msg::LaserScan laser_scan;
+  laser_scan.header.stamp = this->now();
 
   // Fill message
-  laserScan.header.frame_id = frame_id_;
-  laserScan.angle_increment = vdAngRAD[start_scan + 1] - vdAngRAD[start_scan];
-  laserScan.range_min = 0.001;
-  // Though the specs state otherwise, the max range reported by the scanner is 29.96m
-  laserScan.range_max = 29.5;
-  laserScan.time_increment = (scan_duration_) / (vdDistM.size());
+  laser_scan.header.frame_id = frame_id_;
+  laser_scan.range_min = kRangeMin;
+  laser_scan.range_max = kRangeMax;
+  laser_scan.time_increment = scan_duration_ / num_points;
+  laser_scan.scan_time = scan_cycle_time_;
+  laser_scan.ranges.resize(num_points);
+  laser_scan.intensities.resize(num_points);
 
-  // Rescale scan
-  num_readings = vdDistM.size();
-  laserScan.angle_min = vdAngRAD[start_scan];       // first ScanAngle
-  laserScan.angle_max = vdAngRAD[stop_scan - 1];       // last ScanAngle
-  laserScan.ranges.resize(num_readings);
-  laserScan.intensities.resize(num_readings);
-
-  // Check for inverted laser
+  // Check for inverted laser. `ranges`/`intensities` are always output in angles_rad's
+  // natural (increasing-angle) order when not inverted, and reversed when inverted, so
+  // angle_min/angle_max/angle_increment must follow the same convention: angle_min is
+  // always the angle of ranges[0] and angle_max the angle of ranges[num_points - 1],
+  // per the LaserScan message convention.
   if (inverted_) {
-    // to be really accurate, we now invert time_increment
-    // laserScan.header.stamp = rclcpp::Time(laserScan.header.stamp) +
-    // rclcpp::Duration::from_seconds(scanDuration_);
-    // Adding of the sum over all negative increments would be mathematically correct,
-    // but looks worse.
-    laserScan.time_increment = -laserScan.time_increment;
+    laser_scan.angle_min = angles_rad[num_points - 1];       // angle of ranges[0]
+    laser_scan.angle_max = angles_rad[0];       // angle of ranges[num_points - 1]
+    laser_scan.angle_increment = angles_rad[0] - angles_rad[1];
+    // To be really accurate, we would now invert time_increment. Since ranges[0] is the
+    // most recently captured sample when inverted, header.stamp (now()) is left as the
+    // capture-completion time and time_increment counts backwards from it.
+    laser_scan.time_increment = -laser_scan.time_increment;
   } else {
-    // to be consistent with the omission of the addition above
-    laserScan.header.stamp = rclcpp::Time(laserScan.header.stamp) -
+    laser_scan.angle_min = angles_rad[0];       // angle of ranges[0]
+    laser_scan.angle_max = angles_rad[num_points - 1];       // angle of ranges[num_points - 1]
+    laser_scan.angle_increment = angles_rad[1] - angles_rad[0];
+    // ranges[0] was captured scan_duration_ + scan_delay_ before header.stamp (now()),
+    // so shift the stamp back to match time_increment counting forward from ranges[0].
+    laser_scan.header.stamp = rclcpp::Time(laser_scan.header.stamp) -
       rclcpp::Duration::from_seconds(scan_duration_) -
       rclcpp::Duration::from_seconds(scan_delay_);
   }
 
-  for (int i = 0; i < (stop_scan - start_scan); i++) {
+  for (int i = 0; i < num_points; i++) {
     if (inverted_) {
-      laserScan.ranges[i] = vdDistM[stop_scan - 1 - i];
-      laserScan.intensities[i] = vdIntensAU[stop_scan - 1 - i];
+      laser_scan.ranges[i] = ranges_m[num_points - 1 - i];
+      laser_scan.intensities[i] = intensities_au[num_points - 1 - i];
     } else {
-      laserScan.ranges[i] = vdDistM[start_scan + i];
-      laserScan.intensities[i] = vdIntensAU[start_scan + i];
+      laser_scan.ranges[i] = ranges_m[i];
+      laser_scan.intensities[i] = intensities_au[i];
     }
   }
 
   // Publish Laserscan-message
-  laser_scan_pub_->publish(laserScan);
-
-  // Diagnostics
-  diagnostic_msgs::msg::DiagnosticArray diagnostics;
-  diagnostics.header.stamp = this->now();
-  diagnostics.status.resize(1);
-  diagnostics.status[0].level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-  diagnostics.status[0].name = this->get_namespace();
-  diagnostics.status[0].message = "sick scanner running";
-  diag_pub_->publish(diagnostics);
+  laser_scan_pub_->publish(laser_scan);
 }
 
-void SickS300::publishError(std::string error)
+void SickS300::produceDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  diagnostic_msgs::msg::DiagnosticArray diagnostics;
-  diagnostics.header.stamp = this->now();
-  diagnostics.status.resize(1);
-  diagnostics.status[0].level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-  diagnostics.status[0].name = this->get_namespace();
-  diagnostics.status[0].message = error;
-  diag_pub_->publish(diagnostics);
-}
-
-void SickS300::publishWarn(std::string warn)
-{
-  diagnostic_msgs::msg::DiagnosticArray diagnostics;
-  diagnostics.header.stamp = this->now();
-  diagnostics.status.resize(1);
-  diagnostics.status[0].level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-  diagnostics.status[0].name = this->get_namespace();
-  diagnostics.status[0].message = warn;
-  diag_pub_->publish(diagnostics);
+  switch (scanner_status_) {
+    case ScannerStatus::kOk:
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "sick scanner running");
+      break;
+    case ScannerStatus::kStandby:
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "scanner in standby");
+      break;
+    case ScannerStatus::kCommunicationError:
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, scanner_status_message_);
+      break;
+  }
 }
 
 }  // namespace sicks300_ros2
