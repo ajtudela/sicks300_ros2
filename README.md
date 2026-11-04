@@ -1,6 +1,6 @@
 # sicks300_ros2
 
-![ROS2](https://img.shields.io/badge/ros2-rolling-blue?logo=ros&logoColor=white)
+![ROS2](https://img.shields.io/badge/ros2-lyrical-blue?logo=ros&logoColor=white)
 ![License](https://img.shields.io/github/license/ajtudela/sicks300_ros2)
 [![Build](https://github.com/ajtudela/sicks300_ros2/actions/workflows/build.yml/badge.svg)](https://github.com/ajtudela/sicks300_ros2/actions/workflows/build.yml)
 
@@ -18,7 +18,7 @@ However, it does not cover the full functionality of the protocol:
 
 **Keywords:** ROS2, laser, driver, sick s300, lifecycle
 
-The sicks300_ros2 package has been tested under [ROS2] Rolling on [Ubuntu] 26.04. but ported to ROS2. This is research code, expect that it changes often and any fitness for a particular purpose is disclaimed.
+The sicks300_ros2 package has been tested under [ROS2] Lyrical on [Ubuntu] 26.04. but ported to ROS2. This is research code, expect that it changes often and any fitness for a particular purpose is disclaimed.
 
 ## S300 Configuration
 Here are a few notes about how to best configure the S300:
@@ -34,11 +34,20 @@ Here are a few notes about how to best configure the S300:
 
 ## Installation
 
+### Binaries
+
+On Ubuntu 26.04 you can install the latest version of this package using the following command
+
+```bash
+sudo apt-get update
+sudo apt-get install ros-lyrical-sicks300-ros2
+```
+
 ### Building from Source
 
 #### Dependencies
 
-- [Robot Operating System (ROS) 2](https://docs.ros.org/en/rolling/) (middleware for robotics),
+- [Robot Operating System (ROS) 2](https://docs.ros.org/en/lyrical/) (middleware for robotics),
 
 #### Building
 
@@ -47,7 +56,7 @@ To build from source, clone the latest version from this repository into your co
 cd colcon_workspace/src
 git clone https://github.com/ajtudela/sicks300_ros2.git
 cd ../
-rosdep install -i --from-path src --rosdistro rolling -y
+rosdep install -i --from-path src --rosdistro lyrical -y
 colcon build
 ```
 
