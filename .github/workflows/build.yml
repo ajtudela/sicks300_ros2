@@ -5,26 +5,25 @@ name: Build
 
 on:
   push:
-    branches:
-      - rolling
+    branches: [rolling, lyrical, jazzy]
   pull_request:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     container:
-      image: ros:jazzy
+      image: ros:lyrical
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
       - name: Setup ROS 2
         uses: ros-tooling/setup-ros@0.7.19
         with:
-          required-ros-distributions: jazzy
+          required-ros-distributions: lyrical
       - name: Install dependencies
         uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: sicks300_ros2
-          target-ros2-distro: jazzy
+          target-ros2-distro: lyrical
           skip-tests: false
